@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=logimap
+GenericName=Keypad Profile Editor
+Comment=Per-application profile manager for the Logitech MX Keypad
+Exec=logimap gui
+Icon=input-keyboard
+Categories=Settings;HardwareSettings;
+Terminal=false
+Keywords=keypad;logitech;mx;shortcuts;profile;

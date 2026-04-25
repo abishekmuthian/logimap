@@ -1,0 +1,75 @@
+import pytest
+
+from logimap.inject._parse import ParsedShortcut, ShortcutParseError, parse_shortcut
+from logimap.inject.wtype import _build_argv
+
+
+def test_single_key():
+    p = parse_shortcut("t")
+    assert p == ParsedShortcut(modifiers=(), key="t")
+
+
+def test_ctrl_t():
+    p = parse_shortcut("ctrl+t")
+    assert p.modifiers == ("ctrl",)
+    assert p.key == "t"
+
+
+def test_multiple_modifiers():
+    p = parse_shortcut("Ctrl+Shift+T")
+    assert p.modifiers == ("ctrl", "shift")
+    assert p.key == "t"
+
+
+def test_control_alias():
+    p = parse_shortcut("control+c")
+    assert p.modifiers == ("ctrl",)
+
+
+def test_super_logo_alias():
+    p = parse_shortcut("super+l")
+    assert p.modifiers == ("logo",)
+
+
+def test_function_key():
+    p = parse_shortcut("alt+f4")
+    assert p.modifiers == ("alt",)
+    assert p.key == "f4"
+
+
+def test_duplicate_modifier_deduped():
+    p = parse_shortcut("ctrl+ctrl+t")
+    assert p.modifiers == ("ctrl",)
+
+
+def test_empty_raises():
+    with pytest.raises(ShortcutParseError):
+        parse_shortcut("")
+
+
+def test_only_modifier_raises():
+    with pytest.raises(ShortcutParseError):
+        parse_shortcut("ctrl+shift")
+
+
+def test_unknown_modifier_raises():
+    with pytest.raises(ShortcutParseError):
+        parse_shortcut("hyper+t")
+
+
+def test_wtype_argv_ctrl_t():
+    argv = _build_argv(parse_shortcut("ctrl+t"))
+    assert argv[0] == "wtype"
+    assert "-M" in argv and "ctrl" in argv
+    assert "-P" in argv and "-p" in argv
+
+
+def test_wtype_argv_ctrl_shift_f10():
+    argv = _build_argv(parse_shortcut("ctrl+shift+f10"))
+    # both ctrl and shift pressed
+    m_indices = [i for i, a in enumerate(argv) if a == "-M"]
+    assert len(m_indices) == 2
+    assert "F10" in argv
+    # both released
+    lower_m = [i for i, a in enumerate(argv) if a == "-m"]
+    assert len(lower_m) == 2

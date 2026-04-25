@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logimap"
+version = "0.1.0"
+description = "Per-application profile manager for the Logitech MX Keypad on Linux"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Abishek Muthian", email = "me@abishekmuthian.com"}]
+license = {text = "MIT"}
+keywords = ["logitech", "mx-keypad", "kde", "plasma", "wayland", "keypad"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Desktop Environment :: K Desktop Environment (KDE)",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+dependencies = [
+    "Pillow>=10.0",
+    "dbus-next>=0.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/abishekmuthian/logimap"
+Issues = "https://github.com/abishekmuthian/logimap/issues"
+Source = "https://github.com/abishekmuthian/logimap"
+
+[project.scripts]
+logimap = "logimap.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["logimap*"]

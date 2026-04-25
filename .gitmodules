@@ -1,0 +1,6 @@
+[submodule "logilinux"]
+	path = logilinux
+	url = https://github.com/logilinux/logilinux.git
+[submodule "logilinux-sdk"]
+	path = logilinux-sdk
+	url = https://github.com/logilinux/logilinux-sdk.git

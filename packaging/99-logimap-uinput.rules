@@ -1,0 +1,8 @@
+# /dev/uinput access for logimap's keystroke injector.
+#
+# Default kernel perms (root:root 0600) prevent userspace from synthesizing
+# keys. We grant rw to the `input` group, which is the conventional Linux
+# group for input-device access. Add your user with `usermod -aG input $USER`
+# (re-login required for the new group to take effect).
+
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

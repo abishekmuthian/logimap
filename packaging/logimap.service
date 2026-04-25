@@ -1,0 +1,14 @@
+[Unit]
+Description=logimap — Logitech MX Keypad profile daemon
+Documentation=https://github.com/abishekmuthian/logimap
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/logimap run
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

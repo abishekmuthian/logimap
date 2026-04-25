@@ -1,0 +1,10 @@
+# udev rules for Logitech Creator devices used by logimap.
+#
+#   046d:bc00 — MX Dialpad     (reserved; logimap doesn't use it yet)
+#   046d:c354 — MX Creative Keypad
+#
+# Granting world rw is the simplest path; tighten to GROUP="input" + MODE="0660"
+# if you'd rather restrict access to members of the input group.
+
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="bc00", MODE="0666"
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c354", MODE="0666"
