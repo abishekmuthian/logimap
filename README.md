@@ -1,5 +1,7 @@
 # logimap
 
+![logimap Version 0.1.3](https://badgen.net/static/Version/0.1.3/cyan)
+
 **Per-application profile manager for the Logitech MX Creative Keypad on Linux.**
 
 Switch what the keypad's 9 LCD keys display — and which keyboard shortcuts
