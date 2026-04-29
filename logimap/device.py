@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from threading import Event as ThreadEvent, Lock
+from threading import Event as ThreadEvent, RLock
 from typing import Callable
 
 from logilinux import (
@@ -47,7 +47,7 @@ class KeypadHandle:
     def __init__(self) -> None:
         self._lib = Library()
         self._device: MXKeypadDevice | None = None
-        self._lock = Lock()
+        self._lock = RLock()
         self._stop = ThreadEvent()
         self._press_cb: Callable[[MXKeypadButton], None] | None = None
 
@@ -91,10 +91,18 @@ class KeypadHandle:
         return self._with_retry(lambda dev: dev.set_key_image(idx, jpeg))
 
     def paint_grid(self, images: dict[MXKeypadButton, bytes]) -> None:
-        """Paint every grid button. Missing keys are cleared to blank."""
+        """Paint every grid button. Missing keys are cleared to blank.
+
+        The whole 9-key sequence runs under self._lock so concurrent callers
+        (focus-change thread, config-watch thread) cannot interleave native
+        set_key_image calls — the underlying C++ PacketBufferPool is a 16-slot
+        counter-mod ring with no release, and one full grid repaint already
+        wraps it. See logilinux/logilinux#5.
+        """
         blank = render.make_blank()
-        for btn in GRID_BUTTONS:
-            self.paint(btn, images.get(btn, blank))
+        with self._lock:
+            for btn in GRID_BUTTONS:
+                self.paint(btn, images.get(btn, blank))
 
     def _with_retry(self, op: Callable[[MXKeypadDevice], bool]) -> bool:
         with self._lock:
@@ -152,7 +160,7 @@ def paint_test() -> int:
         MXKeypadButton.GRID_7: "Undo",
         MXKeypadButton.GRID_8: "Redo",
     }
-    images = {b: render.make_key_image(t) for b, t in titles.items()}
+    images = render.make_profile_images(titles)
     handle.paint_grid(images)
 
     def _on_press(btn: MXKeypadButton) -> None:
