@@ -7,7 +7,9 @@ they fire — automatically, based on the application currently focused on
 your desktop. Author profiles in a small Tk editor; a background daemon
 handles the rest.
 
-<!-- TODO: insert docs/screenshots/gui.png and docs/screenshots/keypad.jpg -->
+<video src="demo/logimap-demo-reduced-size.mp4" controls></video>
+
+**Disclaimer:** This is not an official Logitech™ application. This project is not affiliated with, endorsed by, or sponsored by Logitech.
 
 ## Status / Scope
 
@@ -18,9 +20,8 @@ handles the rest.
 | Desktop                   | KDE Plasma 6 on **Wayland**                |
 | Keystroke injection       | Built-in `/dev/uinput` (no third-party daemon) |
 
-GNOME, sway, X11, and the MX Dialpad aren't shipped yet — the focus-source
-abstraction in `logimap/focus/` is designed for them, contributions
-welcome.
+**Requires KDE Plasma** as KWin script is being used and the MX Dialpad aren't shipped yet — the focus-source
+abstraction in `logimap/focus/` is designed for them, contributions welcome.
 
 ## Quick start
 
@@ -84,8 +85,17 @@ You'll be prompted for `sudo` at the udev / `usermod` steps.
    copy that string verbatim. Plasma 6 uses reverse-DNS, so it's
    `org.mozilla.firefox`, not `firefox`.
 4. Click a key in the 3×3 grid (e.g. `GRID_0`).
-5. Type a **Title** (what the LCD will show) and click **Capture** —
-   then press the keyboard chord you want to bind, e.g. `Ctrl+T`.
+5. Type a **Title** (what the LCD will show) and assign a shortcut.
+   Two ways:
+   - **Capture**: click the button, press the chord (e.g. `Ctrl+T`).
+     Works for app-level shortcuts the compositor doesn't intercept.
+   - **Type directly into the Shortcut field**: required for chords
+     KWin grabs globally before they reach the editor (e.g. `Meta+L`
+     for lock screen, `Meta+D` for show desktop). Use the canonical
+     `+`-joined form: `logo+l`, `ctrl+shift+t`, `alt+f4`. Modifier
+     names: `ctrl`, `shift`, `alt`, `logo` (also accepts `meta` /
+     `super` / `control`). The daemon synthesizes these via uinput,
+     and KWin's global-shortcut handler honors them on Plasma 6.
 6. **Save**. The daemon hot-reloads the config file (mtime watcher;
    `SIGHUP` also works).
 
@@ -171,6 +181,7 @@ busctl --user status org.logimap.Focus1
 |---|---|
 | LCDs don't change on alt-tab | `grep 'focus ->' ~/.local/state/logimap/logimap.log` — if empty, the KWin script isn't reaching the daemon. Run `logimap install-kwin`. |
 | Key press does nothing | Look for `press GRID_N has no binding in profile '…'` — the resolved profile name shows whether your `wm_class` matched. Profile must use the reverse-DNS class (e.g. `org.mozilla.firefox`). |
+| Capture button doesn't react to `Meta+L`, `Meta+D`, etc. | KWin grabs those globally before the editor sees them. Type the canonical form (e.g. `logo+l`) directly into the Shortcut field instead. |
 | `No usable keystroke injector found` | Your user can't open `/dev/uinput`. Re-login after `install.sh` (the `input` group needs a fresh session) or `sudo setfacl -m u:$USER:rw /dev/uinput` for a one-shot. |
 | `wtype failed for ... exit 1` | KWin 6 hides `zwp_virtual_keyboard_v1` from non-IME clients. The probe should have skipped wtype and selected uinput; check the startup log line `using built-in uinput injector`. |
 | `MX Keypad not found` | `lsusb \| grep 046d:c354` should show the device. If `/dev/hidraw*` is `crw-rw----` instead of `crw-rw-rw-`, the udev rule didn't apply — try `sudo udevadm trigger --subsystem-match=hidraw` and replug. |
@@ -181,6 +192,7 @@ busctl --user status org.logimap.Focus1
 ## Development
 
 ```bash
+pip install -e ".[dev]"          # installs pytest (declared under [project.optional-dependencies].dev)
 PYTHONPATH=. python3 -m pytest tests/ -q
 ```
 
@@ -191,13 +203,19 @@ that doesn't need the physical keypad or a Wayland session.
 Contributions: open a PR against
 [github.com/abishekmuthian/logimap](https://github.com/abishekmuthian/logimap).
 
-## License + credits
+## License
 
-logimap is MIT-licensed. See [`LICENSE`](LICENSE).
+logimap is GPL-3.0-licensed. See [`LICENSE`](LICENSE).
 
-Built on top of:
+## Roadmap
 
-- [`logilinux`](https://github.com/logilinux/logilinux) — C++ core library
-- [`logilinux-sdk`](https://github.com/logilinux/logilinux-sdk) — pybind11 Python bindings (MIT, © 2025 Ron0Studios)
+1. **Pagination** — Support scrolling through multiple pages of keypad bindings (more than 9 keys per profile)
 
-Both pulled in as git submodules.
+## Credits
+
+Built on top of the [LogiLinux](https://github.com/logilinux) project:
+
+- [`logilinux`](https://github.com/logilinux/logilinux) — C++ core library and hardware abstraction
+- [`logilinux-sdk`](https://github.com/logilinux/logilinux-sdk) — pybind11 Python bindings
+
+The core `logilinux` and `logilinux-sdk` repos are pulled in as git submodules.

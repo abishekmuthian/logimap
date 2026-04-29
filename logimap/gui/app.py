@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
 from ..config import Config
@@ -15,6 +17,23 @@ from .shortcut_capture import ShortcutCapture
 log = logging.getLogger(__name__)
 
 
+def _read_version() -> str:
+    pyproject = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
+    if not pyproject.exists():
+        return "unknown"
+    text = pyproject.read_text()
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return m.group(1) if m else "unknown"
+
+
+APP_VERSION = _read_version()
+APP_NAME = "logimap"
+APP_DESCRIPTION = "Per-application profile manager for the Logitech MX Keypad on Linux"
+APP_AUTHOR = "Abishek Muthian"
+APP_LICENSE = "GPL-3.0"
+APP_URL = "https://github.com/abishekmuthian/logimap"
+
+
 class LogimapApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -23,7 +42,6 @@ class LogimapApp:
         self._handle: KeypadHandle | None = None
 
         root.title("logimap — keypad profile editor")
-        root.geometry("1100x560")
         root.minsize(1000, 520)
 
         self._build_layout()
@@ -53,8 +71,9 @@ class LogimapApp:
         ttk.Button(toolbar, text="Duplicate", command=self._duplicate_profile).pack(side="left", padx=2)
         ttk.Button(toolbar, text="Delete", command=self._delete_profile).pack(side="left", padx=2)
 
+        ttk.Button(toolbar, text="About", command=self._show_about).pack(side="right", padx=2)
         ttk.Button(toolbar, text="Save", command=self._save).pack(side="right", padx=2)
-        ttk.Button(toolbar, text="Push to device", command=self._push_to_device).pack(side="right", padx=2)
+        ttk.Button(toolbar, text="Preview on device", command=self._push_to_device).pack(side="right", padx=2)
 
         self.status = ttk.Label(root, anchor="w", padding=6, foreground="gray")
         self.status.pack(side="bottom", fill="x")
@@ -259,6 +278,20 @@ class LogimapApp:
         regex = self.title_regex_var.get().strip()
         profile.match.title_regex = regex or None
 
+    # ---- about ---------------------------------------------------------------
+
+    def _show_about(self) -> None:
+        lines = [
+            f"{APP_NAME} v{APP_VERSION}",
+            "",
+            APP_DESCRIPTION,
+            "",
+            f"Author: {APP_AUTHOR}",
+            f"License: {APP_LICENSE}",
+            f"Home: {APP_URL}",
+        ]
+        messagebox.showinfo("About logimap", "\n".join(lines))
+
     # ---- save / push -------------------------------------------------------
 
     def _save(self) -> None:
@@ -291,16 +324,15 @@ class LogimapApp:
                 self._handle = None
                 messagebox.showerror("Device not ready", str(e))
                 return
-        images = {}
-        blank = render.make_blank(profile.bg_color)
+        titles = {}
         for btn in GRID_BUTTONS:
             binding = profile.keys.get(btn.name)
-            if binding and binding.title:
-                images[btn] = render.make_key_image(binding.title, bg=profile.bg_color, fg=profile.fg_color)
-            else:
-                images[btn] = blank
+            titles[btn] = binding.title if binding and binding.title else ""
+        images = render.make_profile_images(
+            titles, bg=profile.bg_color, fg=profile.fg_color
+        )
         self._handle.paint_grid(images)
-        self._set_status(f"pushed {profile.name!r} to device")
+        self._set_status(f"previewing {profile.name!r} on device")
 
     def _set_status(self, text: str) -> None:
         self.status.configure(text=text)
