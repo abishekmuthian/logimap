@@ -5,10 +5,13 @@
 # pybind11 SDK, sets up an isolated venv, drops udev rules, installs a
 # launcher and desktop entry. Idempotent — safe to re-run.
 #
-# Usage:  ./install.sh [--force]
+# Usage:  ./install.sh [--force] [--downgrade]
 #
-# --force  skip the KDE Plasma 6 Wayland environment check (use if you're
-#          installing on a non-KDE machine just for the GUI editor).
+# --force      skip the KDE Plasma 6 Wayland environment check, AND
+#              reinstall even if the source tree matches the installed
+#              version, AND allow downgrades.
+# --downgrade  allow installing an older version over a newer one
+#              (without also bypassing the env check).
 
 set -euo pipefail
 
@@ -20,13 +23,39 @@ LAUNCHER="${INSTALL_PREFIX}/bin/logimap"
 DESKTOP_FILE="${INSTALL_PREFIX}/share/applications/logimap.desktop"
 SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
 FORCE=0
-[ "${1:-}" = "--force" ] && FORCE=1
+DOWNGRADE=0
+for arg in "$@"; do
+    case "$arg" in
+        --force)     FORCE=1 ;;
+        --downgrade) DOWNGRADE=1 ;;
+        -h|--help)
+            sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) printf '\033[1;31mERROR:\033[0m unknown flag: %s\n' "$arg" >&2; exit 1 ;;
+    esac
+done
 
 # ---- helpers --------------------------------------------------------------
 
 log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+source_version() {
+    grep -E '^version[[:space:]]*=' "$LOGIMAP_ROOT/pyproject.toml" \
+        | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
+}
+installed_version() {
+    [ -x "$LAUNCHER" ] || return 0
+    "$LAUNCHER" --version 2>/dev/null | tr -d '[:space:]'
+}
+# echoes "eq" | "lt" | "gt"  ($1 vs $2)
+version_compare() {
+    [ "$1" = "$2" ] && { echo eq; return; }
+    local first
+    first=$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)
+    [ "$first" = "$1" ] && echo lt || echo gt
+}
 
 # ---- 1. environment probe ------------------------------------------------
 
@@ -38,6 +67,31 @@ if [ "${XDG_SESSION_TYPE:-}" != "wayland" ] || [[ "${XDG_CURRENT_DESKTOP:-}" != 
     if [ "$FORCE" != "1" ]; then
         die "Pass --force to install anyway."
     fi
+fi
+
+# ---- 1.5 version gate ----------------------------------------------------
+
+SRC_VER=$(source_version)
+[ -n "$SRC_VER" ] || die "Cannot read version from pyproject.toml"
+INST_VER=$(installed_version)
+SKIP_BUILD=0
+if [ -z "$INST_VER" ]; then
+    log "Installing logimap $SRC_VER"
+elif [ "$INST_VER" = "$SRC_VER" ]; then
+    if [ "$FORCE" = "1" ]; then
+        log "Reinstalling logimap $SRC_VER (--force)"
+    else
+        log "logimap $SRC_VER is already installed — skipping rebuild"
+        SKIP_BUILD=1
+    fi
+else
+    case $(version_compare "$INST_VER" "$SRC_VER") in
+        lt) log "Updating logimap $INST_VER → $SRC_VER" ;;
+        gt) if [ "$FORCE" != "1" ] && [ "$DOWNGRADE" != "1" ]; then
+                die "Source ($SRC_VER) older than installed ($INST_VER); pass --downgrade."
+            fi
+            log "Downgrading logimap $INST_VER → $SRC_VER" ;;
+    esac
 fi
 
 # ---- 2. distro detection -------------------------------------------------
@@ -83,7 +137,12 @@ esac
 
 if [ -d "$LOGIMAP_ROOT/.git" ]; then
     log "Initializing git submodules"
-    git -C "$LOGIMAP_ROOT" submodule update --init --recursive
+    # Non-recursive: logilinux-sdk's nested 'logilinux-driver' submodule is
+    # replaced with a symlink to ../logilinux in section 6, and git refuses
+    # to recurse into a submodule whose path is already a symlink — so on
+    # re-installs `--recursive` fails with
+    #   "expected submodule path 'logilinux-driver' not to be a symbolic link".
+    git -C "$LOGIMAP_ROOT" submodule update --init
 else
     warn "Not a git checkout — skipping submodule init"
     [ -d "$LOGIMAP_ROOT/logilinux" ]      || die "logilinux/ missing. Clone with --recursive or place it manually."
@@ -92,9 +151,14 @@ fi
 
 # ---- 5. build C++ core ---------------------------------------------------
 
-log "Building logilinux C++ core"
-cmake -S "$LOGIMAP_ROOT/logilinux" -B "$LOGIMAP_ROOT/logilinux/build" >/dev/null
-cmake --build "$LOGIMAP_ROOT/logilinux/build" -j
+if [ "$SKIP_BUILD" != "1" ]; then
+    # Drop stale pybind11 .so so pick_python picks the current Python, not
+    # whichever tag a previous build happened to leave on disk.
+    rm -f "$LOGIMAP_ROOT/logilinux-sdk"/_logilinux_native.cpython-*.so
+    log "Building logilinux C++ core"
+    cmake -S "$LOGIMAP_ROOT/logilinux" -B "$LOGIMAP_ROOT/logilinux/build" >/dev/null
+    cmake --build "$LOGIMAP_ROOT/logilinux/build" -j
+fi
 
 # ---- 6. fix SDK driver stub ----------------------------------------------
 
@@ -106,6 +170,8 @@ if [ ! -L "$SDK_DRIVER" ]; then
 fi
 
 # ---- 7. venv + python deps -----------------------------------------------
+
+if [ "$SKIP_BUILD" != "1" ]; then
 
 # Pick a Python whose minor version matches a previously-built SDK .so
 # (mirrors the auto-detection in scripts/run.sh).
@@ -149,6 +215,8 @@ log "Building & installing logilinux-sdk (editable)"
 log "Installing logimap (editable)"
 "$VPY" -m pip install --quiet -e "$LOGIMAP_ROOT"
 
+fi  # end SKIP_BUILD guard for section 7
+
 # ---- 8. udev rules -------------------------------------------------------
 
 log "Installing udev rules"
@@ -181,16 +249,18 @@ fi
 
 # ---- 10. launcher --------------------------------------------------------
 
-log "Installing launcher at $LAUNCHER"
-mkdir -p "$(dirname "$LAUNCHER")"
-cat > "$LAUNCHER" <<EOF
+if [ "$SKIP_BUILD" != "1" ]; then
+    log "Installing launcher at $LAUNCHER"
+    mkdir -p "$(dirname "$LAUNCHER")"
+    cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
 # Auto-generated by logimap install.sh — regenerate with ./install.sh
 LOGIMAP_ROOT="$LOGIMAP_ROOT"
 export LD_LIBRARY_PATH="\$LOGIMAP_ROOT/logilinux/build/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 exec "$VENV_DIR/bin/python" -m logimap "\$@"
 EOF
-chmod +x "$LAUNCHER"
+    chmod +x "$LAUNCHER"
+fi
 
 if ! echo ":$PATH:" | grep -q ":$INSTALL_PREFIX/bin:"; then
     warn "$INSTALL_PREFIX/bin is not on your \$PATH."
@@ -213,9 +283,19 @@ install -m 644 \
     "$SYSTEMD_USER_DIR/logimap.service"
 systemctl --user daemon-reload >/dev/null 2>&1 || true
 
+# ---- 13. restart running daemon ------------------------------------------
+
+if systemctl --user is-active --quiet logimap.service 2>/dev/null; then
+    log "Restarting active logimap.service"
+    systemctl --user try-restart logimap.service || warn "try-restart failed"
+fi
+if pgrep -u "$USER" -f 'python.*-m logimap run' >/dev/null 2>&1; then
+    warn "Foreground 'logimap run' detected — restart it manually to pick up $SRC_VER"
+fi
+
 # ---- done ----------------------------------------------------------------
 
-log "logimap installed successfully"
+log "logimap $SRC_VER installed successfully"
 echo
 if [ "$NEED_RELOGIN" = "1" ]; then
     cat <<'EOF'

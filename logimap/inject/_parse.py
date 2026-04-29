@@ -12,6 +12,17 @@ _MOD_ALIAS = {
     "meta": "logo",
 }
 
+# US-keyboard shifted symbols → (base_keycap, requires shift). A user typing
+# `ctrl+?` means Ctrl+Shift+/, but `?` is not a real keycap and has no
+# input-event keycode — translate at parse time so both uinput and wtype see
+# only real keycaps and a clean modifier set.
+_SHIFTED_SYMBOL: dict[str, str] = {
+    "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+    "_": "-", "{": "[", "}": "]", "|": "\\",
+    ":": ";", '"': "'", "<": ",", ">": ".", "?": "/",
+}
+
 
 @dataclass(frozen=True)
 class ParsedShortcut:
@@ -55,5 +66,10 @@ def parse_shortcut(shortcut: str) -> ParsedShortcut:
 
     if key in MODIFIERS:
         raise ShortcutParseError(f"shortcut {shortcut!r} has no non-modifier key")
+
+    if key in _SHIFTED_SYMBOL:
+        key = _SHIFTED_SYMBOL[key]
+        if "shift" not in seen:
+            seen.append("shift")
 
     return ParsedShortcut(modifiers=tuple(seen), key=key)

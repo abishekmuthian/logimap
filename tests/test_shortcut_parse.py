@@ -57,6 +57,30 @@ def test_unknown_modifier_raises():
         parse_shortcut("hyper+t")
 
 
+def test_shifted_symbol_question_mark():
+    p = parse_shortcut("ctrl+?")
+    assert p.modifiers == ("ctrl", "shift")
+    assert p.key == "/"
+
+
+def test_shifted_symbol_with_existing_shift_not_duplicated():
+    p = parse_shortcut("ctrl+shift+?")
+    assert p.modifiers == ("ctrl", "shift")
+    assert p.key == "/"
+
+
+def test_shifted_symbol_bare():
+    p = parse_shortcut("!")
+    assert p.modifiers == ("shift",)
+    assert p.key == "1"
+
+
+def test_shifted_symbol_braces():
+    p = parse_shortcut("ctrl+}")
+    assert p.modifiers == ("ctrl", "shift")
+    assert p.key == "]"
+
+
 def test_wtype_argv_ctrl_t():
     argv = _build_argv(parse_shortcut("ctrl+t"))
     assert argv[0] == "wtype"

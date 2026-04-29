@@ -93,18 +93,13 @@ class Daemon:
 
     def _paint_profile(self, profile: Profile) -> None:
         log.info("painting profile: %s", profile.name)
-        images: dict[MXKeypadButton, bytes] = {}
-        blank = render.make_blank(profile.bg_color)
+        titles: dict[MXKeypadButton, str] = {}
         for btn in GRID_BUTTONS:
             binding = profile.keys.get(btn.name)
-            if binding and binding.title:
-                images[btn] = render.make_key_image(
-                    binding.title,
-                    bg=profile.bg_color,
-                    fg=profile.fg_color,
-                )
-            else:
-                images[btn] = blank
+            titles[btn] = binding.title if binding and binding.title else ""
+        images = render.make_profile_images(
+            titles, bg=profile.bg_color, fg=profile.fg_color
+        )
         self._handle.paint_grid(images)
 
     def _on_button(self, btn: MXKeypadButton) -> None:

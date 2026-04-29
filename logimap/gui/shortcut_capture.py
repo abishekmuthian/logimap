@@ -63,7 +63,12 @@ def _normalize(event: tk.Event) -> str | None:
 
 
 class ShortcutCapture(ttk.Frame):
-    """Click to focus, then press any key combo. The combo string appears below."""
+    """Click to focus, then press any key combo. The combo string appears below.
+
+    The entry is also directly editable so users can type shortcuts the
+    compositor intercepts (e.g. Meta+L on KDE Plasma 6) — those never reach
+    Tk via Capture because KWin grabs them globally.
+    """
 
     def __init__(
         self,
@@ -75,8 +80,9 @@ class ShortcutCapture(ttk.Frame):
         super().__init__(master)
         self._on_change = on_change
         self._value = tk.StringVar(value=initial)
+        self._suppress_trace = False
 
-        self._entry = ttk.Entry(self, textvariable=self._value, state="readonly", width=30)
+        self._entry = ttk.Entry(self, textvariable=self._value, width=30)
         self._entry.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self._btn = ttk.Button(self, text="Capture", command=self._start_capture)
         self._btn.grid(row=0, column=1)
@@ -85,21 +91,37 @@ class ShortcutCapture(ttk.Frame):
         self.columnconfigure(0, weight=1)
 
         self._capturing = False
+        self._value.trace_add("write", self._on_value_write)
+
+    def _on_value_write(self, *_args: object) -> None:
+        # Fires for user typing/paste AND programmatic .set(); suppress the
+        # latter so loading a binding or showing a placeholder doesn't loop
+        # back into the caller's on_change.
+        if self._suppress_trace or self._capturing:
+            return
+        if self._on_change is not None:
+            self._on_change(self._value.get())
 
     def get(self) -> str:
         return self._value.get()
 
     def set(self, value: str) -> None:
-        self._value.set(value)
+        self._suppress_trace = True
+        try:
+            self._value.set(value)
+        finally:
+            self._suppress_trace = False
 
     def _start_capture(self) -> None:
         if self._capturing:
             return
         self._capturing = True
         self._btn.configure(text="Press keys…")
-        self._entry.configure(state="normal")
-        self._value.set("(press any combo)")
-        self._entry.configure(state="readonly")
+        self._suppress_trace = True
+        try:
+            self._value.set("(press any combo)")
+        finally:
+            self._suppress_trace = False
         self._entry.focus_set()
         self._entry.bind("<Key>", self._on_key)
 
@@ -107,15 +129,17 @@ class ShortcutCapture(ttk.Frame):
         combo = _normalize(event)
         if combo is None:
             return "break"
-        self._value.set(combo)
         self._capturing = False
         self._btn.configure(text="Capture")
         self._entry.unbind("<Key>")
+        self._suppress_trace = True
+        try:
+            self._value.set(combo)
+        finally:
+            self._suppress_trace = False
         if self._on_change is not None:
             self._on_change(combo)
         return "break"
 
     def _do_clear(self) -> None:
         self._value.set("")
-        if self._on_change is not None:
-            self._on_change("")

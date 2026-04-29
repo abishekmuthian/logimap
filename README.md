@@ -7,7 +7,7 @@ they fire — automatically, based on the application currently focused on
 your desktop. Author profiles in a small Tk editor; a background daemon
 handles the rest.
 
-<video src="demo/logimap-demo-reduced-size.mp4" controls></video>
+<video src="demo/logimap-demo-reduced-size.mp4" type="video/mp4" controls></video>
 
 **Disclaimer:** This is not an official Logitech™ application. This project is not affiliated with, endorsed by, or sponsored by Logitech.
 

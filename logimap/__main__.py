@@ -6,12 +6,13 @@ import argparse
 import logging
 import sys
 
-from . import _logging
+from . import __version__, _logging
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="logimap")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    parser.add_argument("--version", action="version", version=__version__)
+    sub = parser.add_subparsers(dest="cmd", required=False)
 
     sub.add_parser("gui", help="launch profile editor")
     sub.add_parser("run", help="run the focus-aware daemon")
@@ -26,6 +27,9 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.cmd is None:
+        parser.print_help(sys.stderr)
+        return 2
     log_path = _logging.setup(verbose=args.verbose, log_to_file=not args.no_log_file)
     if log_path is not None:
         logging.getLogger("logimap").info("log file: %s", log_path)

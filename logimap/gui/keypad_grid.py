@@ -68,24 +68,21 @@ class KeypadGrid(ttk.Frame):
         if ImageTk is None:
             self._render_text_only(profile)
             return
-        for name in KEY_NAMES:
-            lbl = self._labels[name]
-            if profile is None:
-                jpeg = render.make_blank()
-            else:
+        if profile is None:
+            blank = render.make_blank()
+            images = {name: blank for name in KEY_NAMES}
+        else:
+            titles = {}
+            for name in KEY_NAMES:
                 binding = profile.keys.get(name)
-                title = binding.title if binding else ""
-                if title:
-                    jpeg = render.make_key_image(
-                        title,
-                        bg=profile.bg_color,
-                        fg=profile.fg_color,
-                    )
-                else:
-                    jpeg = render.make_blank(profile.bg_color)
-            photo = self._jpeg_to_photo(jpeg)
+                titles[name] = binding.title if binding and binding.title else ""
+            images = render.make_profile_images(
+                titles, bg=profile.bg_color, fg=profile.fg_color
+            )
+        for name in KEY_NAMES:
+            photo = self._jpeg_to_photo(images[name])
             self._photo_refs[name] = photo
-            lbl.configure(image=photo)
+            self._labels[name].configure(image=photo)
         self._refresh_highlights()
 
     def _render_text_only(self, profile: Profile | None) -> None:
