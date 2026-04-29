@@ -4,3 +4,4 @@
 [submodule "logilinux-sdk"]
 	path = logilinux-sdk
 	url = https://github.com/logilinux/logilinux-sdk.git
+	ignore = dirty
