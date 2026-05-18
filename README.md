@@ -1,6 +1,6 @@
 # logimap
 
-![logimap Version 0.1.3](https://badgen.net/static/Version/0.1.3/cyan)
+![logimap Version 0.1.4](https://badgen.net/static/Version/0.1.4/cyan)
 
 **Per-application profile manager for the Logitech MX Creative Keypad on Linux.**
 
@@ -88,18 +88,29 @@ You'll be prompted for `sudo` at the udev / `usermod` steps.
    `org.mozilla.firefox`, not `firefox`.
 4. Click a key in the 3×3 grid (e.g. `GRID_0`).
 5. Type a **Title** (what the LCD will show) and assign a shortcut.
-   Two ways:
-   - **Capture**: click the button, press the chord (e.g. `Ctrl+T`).
-     Works for app-level shortcuts the compositor doesn't intercept.
-   - **Type directly into the Shortcut field**: required for chords
-     KWin grabs globally before they reach the editor (e.g. `Meta+L`
-     for lock screen, `Meta+D` for show desktop). Use the canonical
-     `+`-joined form: `logo+l`, `ctrl+shift+t`, `alt+f4`. Modifier
-     names: `ctrl`, `shift`, `alt`, `logo` (also accepts `meta` /
-     `super` / `control`). The daemon synthesizes these via uinput,
-     and KWin's global-shortcut handler honors them on Plasma 6.
+    Two ways:
+    - **Capture**: click the button, press the chord (e.g. `Ctrl+T`).
+      Works for app-level shortcuts the compositor doesn't intercept.
+      Capture records a single chord — for multi-chord shortcuts like
+      tmux prefixes, type directly (see below).
+    - **Type directly into the Shortcut field**: required for chords
+      KWin grabs globally before they reach the editor (e.g. `Meta+L`
+      for lock screen, `Meta+D` for show desktop). Use the canonical
+      `+`-joined form: `logo+l`, `ctrl+shift+t`, `alt+f4`. Modifier
+      names: `ctrl`, `shift`, `alt`, `logo` (also accepts `meta` /
+      `super` / `control`). The daemon synthesizes these via uinput,
+      and KWin's global-shortcut handler honors them on Plasma 6.
+    - **Multi-chord shortcuts** (tmux, screen, etc.): separate chords
+      with a comma. For example, tmux's vertical split (`Ctrl+B` then
+      `"`) is entered as `ctrl+b,"` (the `"` auto-expands to
+      `shift+'`). The daemon injects each chord with a 50 ms pause
+      between them so the receiving application can distinguish the
+      prefix from the action. Other examples:
+      - `ctrl+b,%` — tmux horizontal split
+      - `ctrl+b,o` — tmux switch pane
+      - `ctrl+b,x` — tmux close pane
 6. **Save**. The daemon hot-reloads the config file (mtime watcher;
-   `SIGHUP` also works).
+    `SIGHUP` also works).
 
 ## Profile JSON
 
@@ -117,7 +128,9 @@ You'll be prompted for `sudo` at the udev / `usermod` steps.
       "keys": {
         "GRID_0": {"title": "New Tab",    "shortcut": "ctrl+t"},
         "GRID_1": {"title": "Close Tab",  "shortcut": "ctrl+w"},
-        "GRID_2": {"title": "Reopen Tab", "shortcut": "ctrl+shift+t"}
+        "GRID_2": {"title": "Reopen Tab", "shortcut": "ctrl+shift+t"},
+        "GRID_3": {"title": "Split V",    "shortcut": "ctrl+b,\""},
+        "GRID_4": {"title": "Split H",    "shortcut": "ctrl+b,%"}
       }
     },
     "default": {

@@ -12,6 +12,11 @@ ydotool is kept as a fallback for users who already have ydotoold running;
 it's unmaintained and not recommended for new setups.
 
 xdotool is XWayland-only and rarely useful on a modern Plasma session.
+
+Multi-chord shortcuts (e.g. tmux prefix sequences) are expressed with commas:
+    press("ctrl+b,shift+'")
+Each chord is injected with a 50 ms gap so the receiving application can
+distinguish the chords.  Single chords like "ctrl+t" work unchanged.
 """
 
 from __future__ import annotations

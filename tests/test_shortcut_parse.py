@@ -1,6 +1,11 @@
 import pytest
 
-from logimap.inject._parse import ParsedShortcut, ShortcutParseError, parse_shortcut
+from logimap.inject._parse import (
+    ParsedShortcut,
+    ShortcutParseError,
+    parse_shortcut,
+    parse_shortcut_sequence,
+)
 from logimap.inject.wtype import _build_argv
 
 
@@ -97,3 +102,57 @@ def test_wtype_argv_ctrl_shift_f10():
     # both released
     lower_m = [i for i, a in enumerate(argv) if a == "-m"]
     assert len(lower_m) == 2
+
+
+class TestParseShortcutSequence:
+    def test_single_chord_passthrough(self):
+        result = parse_shortcut_sequence("ctrl+t")
+        assert len(result) == 1
+        assert result[0] == ParsedShortcut(modifiers=("ctrl",), key="t")
+
+    def test_two_chord_sequence(self):
+        result = parse_shortcut_sequence("ctrl+b,shift+'")
+        assert len(result) == 2
+        assert result[0] == ParsedShortcut(modifiers=("ctrl",), key="b")
+        assert result[1] == ParsedShortcut(modifiers=("shift",), key="'")
+
+    def test_tmux_double_quote(self):
+        result = parse_shortcut_sequence('ctrl+b,"')
+        assert len(result) == 2
+        assert result[0] == ParsedShortcut(modifiers=("ctrl",), key="b")
+        assert result[1] == ParsedShortcut(modifiers=("shift",), key="'")
+
+    def test_three_chord_sequence(self):
+        result = parse_shortcut_sequence("ctrl+b,ctrl+c,ctrl+d")
+        assert len(result) == 3
+        assert result[0].key == "b"
+        assert result[1].key == "c"
+        assert result[2].key == "d"
+
+    def test_whitespace_around_comma(self):
+        result = parse_shortcut_sequence("ctrl+b , shift+'")
+        assert len(result) == 2
+        assert result[0] == ParsedShortcut(modifiers=("ctrl",), key="b")
+        assert result[1] == ParsedShortcut(modifiers=("shift",), key="'")
+
+    def test_empty_chord_in_sequence_raises(self):
+        with pytest.raises(ShortcutParseError, match="empty chord"):
+            parse_shortcut_sequence("ctrl+b,,shift+'")
+
+    def test_trailing_comma_raises(self):
+        with pytest.raises(ShortcutParseError, match="empty chord"):
+            parse_shortcut_sequence("ctrl+b,")
+
+    def test_leading_comma_raises(self):
+        with pytest.raises(ShortcutParseError, match="empty chord"):
+            parse_shortcut_sequence(",ctrl+b")
+
+    def test_bare_key_as_sequence(self):
+        result = parse_shortcut_sequence("t")
+        assert result == [ParsedShortcut(modifiers=(), key="t")]
+
+    def test_shifted_symbol_in_second_chord(self):
+        result = parse_shortcut_sequence("ctrl+b,?")
+        assert len(result) == 2
+        assert result[0] == ParsedShortcut(modifiers=("ctrl",), key="b")
+        assert result[1] == ParsedShortcut(modifiers=("shift",), key="/")

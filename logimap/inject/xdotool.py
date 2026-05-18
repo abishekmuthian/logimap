@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import subprocess
 
-from ._parse import parse_shortcut
+import time
+
+from ._parse import parse_shortcut_sequence
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +33,10 @@ def _xdo_keysym(parsed) -> str:
 
 class XdotoolInjector:
     def press(self, shortcut: str) -> None:
-        parsed = parse_shortcut(shortcut)
-        argv = ["xdotool", "key", "--clearmodifiers", _xdo_keysym(parsed)]
-        log.debug("xdotool argv: %s", argv)
-        subprocess.run(argv, check=True, timeout=2.0)
+        chords = parse_shortcut_sequence(shortcut)
+        for i, parsed in enumerate(chords):
+            if i > 0:
+                time.sleep(0.05)
+            argv = ["xdotool", "key", "--clearmodifiers", _xdo_keysym(parsed)]
+            log.debug("xdotool argv: %s", argv)
+            subprocess.run(argv, check=True, timeout=2.0)

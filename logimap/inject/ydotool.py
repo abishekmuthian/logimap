@@ -9,8 +9,10 @@ from __future__ import annotations
 import logging
 import subprocess
 
+import time
+
 from ._keycodes import KEY_CODE, MOD_CODE
-from ._parse import ParsedShortcut, parse_shortcut
+from ._parse import parse_shortcut_sequence
 
 log = logging.getLogger(__name__)
 
@@ -32,15 +34,18 @@ def _build_argv(parsed: ParsedShortcut) -> list[str]:
 
 class YdotoolInjector:
     def press(self, shortcut: str) -> None:
-        parsed = parse_shortcut(shortcut)
-        argv = _build_argv(parsed)
-        log.debug("ydotool argv: %s", argv)
-        try:
-            r = subprocess.run(argv, check=False, timeout=2.0, capture_output=True, text=True)
-        except FileNotFoundError:
-            log.error("ydotool not installed")
-            raise
-        if r.returncode != 0:
-            msg = (r.stderr or r.stdout or "").strip()
-            log.error("ydotool failed for %s: exit %s — %s", shortcut, r.returncode, msg)
-            raise RuntimeError(f"ydotool exit {r.returncode}: {msg}")
+        chords = parse_shortcut_sequence(shortcut)
+        for i, parsed in enumerate(chords):
+            if i > 0:
+                time.sleep(0.05)
+            argv = _build_argv(parsed)
+            log.debug("ydotool argv: %s", argv)
+            try:
+                r = subprocess.run(argv, check=False, timeout=2.0, capture_output=True, text=True)
+            except FileNotFoundError:
+                log.error("ydotool not installed")
+                raise
+            if r.returncode != 0:
+                msg = (r.stderr or r.stdout or "").strip()
+                log.error("ydotool failed for %s: exit %s — %s", shortcut, r.returncode, msg)
+                raise RuntimeError(f"ydotool exit {r.returncode}: {msg}")

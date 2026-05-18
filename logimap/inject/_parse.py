@@ -73,3 +73,29 @@ def parse_shortcut(shortcut: str) -> ParsedShortcut:
             seen.append("shift")
 
     return ParsedShortcut(modifiers=tuple(seen), key=key)
+
+
+SHORTCUT_SEP = ","
+
+
+def parse_shortcut_sequence(shortcut: str) -> list[ParsedShortcut]:
+    """Parse a shortcut that may contain multiple chords separated by SHORTCUT_SEP.
+
+    Single chords like 'ctrl+t' return a one-element list (backward compatible
+    with callers that only expect one chord).  Multi-chord shortcuts use ','
+    as the delimiter, e.g. 'ctrl+b,shift+\\'' for a tmux prefix sequence.
+    """
+    shortcut = shortcut.strip()
+    if SHORTCUT_SEP not in shortcut:
+        return [parse_shortcut(shortcut)]
+    parts = [p.strip() for p in shortcut.split(SHORTCUT_SEP)]
+    if not parts:
+        raise ShortcutParseError(f"empty shortcut {shortcut!r}")
+    result: list[ParsedShortcut] = []
+    for i, part in enumerate(parts):
+        if not part:
+            raise ShortcutParseError(
+                f"empty chord at position {i} in {shortcut!r}"
+            )
+        result.append(parse_shortcut(part))
+    return result

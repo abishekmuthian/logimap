@@ -24,7 +24,7 @@ import struct
 import time
 
 from ._keycodes import KEY_CODE, MOD_CODE
-from ._parse import ParsedShortcut, parse_shortcut
+from ._parse import ParsedShortcut, parse_shortcut_sequence
 
 log = logging.getLogger(__name__)
 
@@ -123,13 +123,16 @@ class UinputInjector:
     def press(self, shortcut: str) -> None:
         if self._fd is None:
             raise RuntimeError("uinput device not open")
-        parsed = parse_shortcut(shortcut)
+        chords = parse_shortcut_sequence(shortcut)
         try:
-            events = _events_for(parsed)
+            events_list = [_events_for(c) for c in chords]
         except KeyError as e:
             raise ValueError(f"uinput: no keycode for {e.args[0]!r}") from e
-        for etype, code, value in events:
-            self._emit(etype, code, value)
+        for i, events in enumerate(events_list):
+            if i > 0:
+                time.sleep(0.05)
+            for etype, code, value in events:
+                self._emit(etype, code, value)
 
     def close(self) -> None:
         if self._fd is None:

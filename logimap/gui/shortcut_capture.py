@@ -88,6 +88,11 @@ class ShortcutCapture(ttk.Frame):
         self._btn.grid(row=0, column=1)
         self._clear = ttk.Button(self, text="Clear", command=self._do_clear)
         self._clear.grid(row=0, column=2, padx=(4, 0))
+        self._hint = ttk.Label(
+            self, text="Use , to separate chords, e.g. ctrl+b,shift+' for tmux",
+            foreground="grey50",
+        )
+        self._hint.grid(row=1, column=0, columnspan=3, sticky="w")
         self.columnconfigure(0, weight=1)
 
         self._capturing = False
