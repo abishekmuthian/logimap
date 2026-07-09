@@ -47,7 +47,9 @@ source_version() {
 }
 installed_version() {
     [ -x "$LAUNCHER" ] || return 0
-    "$LAUNCHER" --version 2>/dev/null | tr -d '[:space:]'
+    # Run outside the checkout so stale local *.egg-info metadata cannot
+    # shadow the installed editable distribution.
+    (cd / && "$LAUNCHER" --version 2>/dev/null) | tr -d '[:space:]'
 }
 # echoes "eq" | "lt" | "gt"  ($1 vs $2)
 version_compare() {
@@ -93,6 +95,43 @@ else
             log "Downgrading logimap $INST_VER → $SRC_VER" ;;
     esac
 fi
+
+# ---- 1.6 ensure venv + refresh logimap metadata (early) -----------------
+# Refresh the logimap editable install BEFORE the failure-prone heavy
+# steps (sudo dnf, cmake, pybind11 SDK build) so `logimap --version` always
+# tracks pyproject.toml — even if a later step aborts under `set -e`.
+# `--no-deps` because system packages (Pillow, dbus-next) aren't installed
+# yet at this point; `--version` only reads importlib.metadata and needs no
+# runtime deps. pip is idempotent: a no-op when the version already matches.
+pick_python() {
+    local sdk_so tag ver
+    sdk_so=$(ls "$LOGIMAP_ROOT/logilinux-sdk"/_logilinux_native.cpython-*.so 2>/dev/null | head -1)
+    if [ -n "$sdk_so" ]; then
+        tag=$(basename "$sdk_so" | sed -n 's/.*cpython-\([0-9]\+\)-.*/\1/p')
+        ver="${tag:0:1}.${tag:1}"
+        if command -v "python${ver}" >/dev/null 2>&1; then
+            echo "python${ver}"
+            return
+        fi
+    fi
+    # No prior build — use the highest Python the system has, in this order.
+    for v in 3.14 3.13 3.12 3.11 3.10; do
+        if command -v "python${v}" >/dev/null 2>&1; then
+            echo "python${v}"
+            return
+        fi
+    done
+    echo python3
+}
+PYTHON=$(pick_python)
+mkdir -p "$(dirname "$VENV_DIR")"
+if [ ! -d "$VENV_DIR" ]; then
+    log "Creating venv at $VENV_DIR ($PYTHON)"
+    "$PYTHON" -m venv --system-site-packages "$VENV_DIR"
+fi
+VPY="$VENV_DIR/bin/python"
+log "Refreshing logimap metadata → $(grep -E '^version' "$LOGIMAP_ROOT/pyproject.toml" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+"$VPY" -m pip install --quiet --no-deps -e "$LOGIMAP_ROOT" || warn "logimap metadata refresh failed — --version may be stale"
 
 # ---- 2. distro detection -------------------------------------------------
 
@@ -171,39 +210,11 @@ fi
 
 # ---- 7. venv + python deps -----------------------------------------------
 
+# venv + VPY already set up in section 1.6. This block does the heavy
+# pybind11/SDK build, gated by SKIP_BUILD.
 if [ "$SKIP_BUILD" != "1" ]; then
 
-# Pick a Python whose minor version matches a previously-built SDK .so
-# (mirrors the auto-detection in scripts/run.sh).
-pick_python() {
-    local sdk_so tag ver
-    sdk_so=$(ls "$LOGIMAP_ROOT/logilinux-sdk"/_logilinux_native.cpython-*.so 2>/dev/null | head -1)
-    if [ -n "$sdk_so" ]; then
-        tag=$(basename "$sdk_so" | sed -n 's/.*cpython-\([0-9]\+\)-.*/\1/p')
-        ver="${tag:0:1}.${tag:1}"
-        if command -v "python${ver}" >/dev/null 2>&1; then
-            echo "python${ver}"
-            return
-        fi
-    fi
-    # No prior build — use the highest Python the system has, in this order.
-    for v in 3.14 3.13 3.12 3.11 3.10; do
-        if command -v "python${v}" >/dev/null 2>&1; then
-            echo "python${v}"
-            return
-        fi
-    done
-    echo python3
-}
-PYTHON=$(pick_python)
 log "Using Python: $PYTHON ($("$PYTHON" --version 2>&1))"
-
-mkdir -p "$(dirname "$VENV_DIR")"
-if [ ! -d "$VENV_DIR" ]; then
-    log "Creating venv at $VENV_DIR"
-    "$PYTHON" -m venv --system-site-packages "$VENV_DIR"
-fi
-VPY="$VENV_DIR/bin/python"
 
 log "Upgrading pip + installing pybind11 in venv"
 "$VPY" -m pip install --quiet --upgrade pip wheel
@@ -211,9 +222,6 @@ log "Upgrading pip + installing pybind11 in venv"
 
 log "Building & installing logilinux-sdk (editable)"
 "$VPY" -m pip install --quiet -e "$LOGIMAP_ROOT/logilinux-sdk"
-
-log "Installing logimap (editable)"
-"$VPY" -m pip install --quiet -e "$LOGIMAP_ROOT"
 
 fi  # end SKIP_BUILD guard for section 7
 

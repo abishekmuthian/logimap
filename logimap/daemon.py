@@ -18,6 +18,8 @@ from .profiles import Profile, WindowFocus, resolve
 
 log = logging.getLogger(__name__)
 
+PAINT_RETRY_SECONDS = 2.0
+
 
 class Daemon:
     def __init__(self) -> None:
@@ -32,6 +34,8 @@ class Daemon:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._current: Profile | None = None
+        self._painted_profile_name: str | None = None
+        self._pending_profile: Profile | None = None
         self._last_focus: WindowFocus | None = None
 
     def run(self) -> int:
@@ -50,6 +54,8 @@ class Daemon:
         # background config file watcher
         watcher = threading.Thread(target=self._watch_config, daemon=True, name="config-watch")
         watcher.start()
+        retry = threading.Thread(target=self._retry_paint, daemon=True, name="paint-retry")
+        retry.start()
 
         log.info("daemon running — Ctrl+C to stop")
         try:
@@ -86,12 +92,26 @@ class Daemon:
 
     def _apply_focus(self, focus: WindowFocus) -> None:
         profile = resolve(self._config.profiles, focus, self._config.default_profile)
-        if self._current is not None and profile.name == self._current.name:
+        if (
+            self._current is not None
+            and profile.name == self._current.name
+            and self._painted_profile_name == profile.name
+            and self._pending_profile is None
+        ):
             return
         self._current = profile
-        self._paint_profile(profile)
+        self._paint_or_defer(profile)
 
-    def _paint_profile(self, profile: Profile) -> None:
+    def _paint_or_defer(self, profile: Profile) -> None:
+        if self._paint_profile(profile):
+            self._painted_profile_name = profile.name
+            self._pending_profile = None
+            return
+        self._painted_profile_name = None
+        self._pending_profile = profile
+        log.info("will retry painting profile %s when keypad is available", profile.name)
+
+    def _paint_profile(self, profile: Profile) -> bool:
         log.info("painting profile: %s", profile.name)
         titles: dict[MXKeypadButton, str] = {}
         for btn in GRID_BUTTONS:
@@ -100,7 +120,20 @@ class Daemon:
         images = render.make_profile_images(
             titles, bg=profile.bg_color, fg=profile.fg_color
         )
-        self._handle.paint_grid(images)
+        return self._handle.paint_grid(images)
+
+    def _retry_paint(self) -> None:
+        while not self._stop.wait(PAINT_RETRY_SECONDS):
+            with self._lock:
+                if (
+                    self._pending_profile is None
+                    and self._current is not None
+                    and not self._handle.is_monitoring()
+                ):
+                    self._painted_profile_name = None
+                    self._pending_profile = self._current
+                if self._pending_profile is not None:
+                    self._paint_or_defer(self._pending_profile)
 
     def _on_button(self, btn: MXKeypadButton) -> None:
         with self._lock:

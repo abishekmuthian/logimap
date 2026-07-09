@@ -73,15 +73,14 @@ class KeypadHandle:
     def close(self) -> None:
         self._stop.set()
         with self._lock:
-            if self._device is not None:
-                try:
-                    self._device.stop_monitoring()
-                except Exception:
-                    log.exception("stop_monitoring failed")
-                self._device = None
+            self._drop_device_locked()
 
     def on_press(self, cb: Callable[[MXKeypadButton], None]) -> None:
         self._press_cb = cb
+
+    def is_monitoring(self) -> bool:
+        with self._lock:
+            return self._device is not None and bool(self._device.is_monitoring)
 
     def paint(self, button: MXKeypadButton, jpeg: bytes) -> bool:
         idx = int(button.value)
@@ -90,7 +89,7 @@ class KeypadHandle:
             return False
         return self._with_retry(lambda dev: dev.set_key_image(idx, jpeg))
 
-    def paint_grid(self, images: dict[MXKeypadButton, bytes]) -> None:
+    def paint_grid(self, images: dict[MXKeypadButton, bytes]) -> bool:
         """Paint every grid button. Missing keys are cleared to blank.
 
         The whole 9-key sequence runs under self._lock so concurrent callers
@@ -102,7 +101,9 @@ class KeypadHandle:
         blank = render.make_blank()
         with self._lock:
             for btn in GRID_BUTTONS:
-                self.paint(btn, images.get(btn, blank))
+                if not self.paint(btn, images.get(btn, blank)):
+                    return False
+        return True
 
     def _with_retry(self, op: Callable[[MXKeypadDevice], bool]) -> bool:
         with self._lock:
@@ -113,17 +114,29 @@ class KeypadHandle:
                     log.warning("keypad unavailable: %s", e)
                     return False
             try:
-                return bool(op(self._device))
+                if bool(op(self._device)):
+                    return True
+                log.warning("device op failed — attempting reconnect")
             except Exception:
                 log.exception("device op failed — attempting reconnect")
-                self._device = None
-                time.sleep(RECONNECT_DELAY_SECONDS)
-                try:
-                    self._open_locked()
-                    return bool(op(self._device))
-                except Exception:
-                    log.exception("reconnect failed")
-                    return False
+            self._drop_device_locked()
+            time.sleep(RECONNECT_DELAY_SECONDS)
+            try:
+                self._open_locked()
+                return bool(op(self._device))
+            except Exception:
+                log.exception("reconnect failed")
+                self._drop_device_locked()
+                return False
+
+    def _drop_device_locked(self) -> None:
+        if self._device is None:
+            return
+        try:
+            self._device.stop_monitoring()
+        except Exception:
+            log.exception("stop_monitoring failed")
+        self._device = None
 
     def _on_native_event(self, event) -> None:
         if not isinstance(event, ButtonEvent) or not event.pressed:
