@@ -1,6 +1,7 @@
 [submodule "logilinux"]
 	path = logilinux
-	url = https://github.com/logilinux/logilinux.git
+	url = https://github.com/abishekmuthian/logilinux.git
+	branch = master
 [submodule "logilinux-sdk"]
 	path = logilinux-sdk
 	url = https://github.com/logilinux/logilinux-sdk.git
