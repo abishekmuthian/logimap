@@ -177,8 +177,8 @@ KWin JS ──D-Bus──▶ daemon ──JPEG bytes──▶ MX Keypad
   keyboard, writes `EV_KEY` events for the chord. `wtype`/`ydotool`/`xdotool`
   are auto-probed fallbacks (rarely needed on KWin 6; see
   [Troubleshooting](#troubleshooting)).
-- `logimap/render.py` produces a 90×90 JPEG from a title string, which is the only
-  format `MXKeypadDevice.set_key_image()` accepts.
+- `logimap/render.py` produces a 118×118 JPEG from a title string to fill the
+  LCD region programmed by `MXKeypadDevice.set_key_image()`.
 
 ## Troubleshooting
 

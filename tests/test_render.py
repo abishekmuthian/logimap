@@ -1,7 +1,10 @@
-from PIL import ImageFont
+from io import BytesIO
+
+from PIL import Image, ImageFont
 
 from logimap.render import (
     KEY_SIZE,
+    SIZES,
     _font_path,
     _pick_font_size,
     _wrap,
@@ -22,7 +25,19 @@ def test_blank_jpeg() -> None:
 
 
 def test_key_size_constant() -> None:
-    assert KEY_SIZE == (90, 90)
+    assert KEY_SIZE == (118, 118)
+
+
+def test_jpeg_fills_key_lcd() -> None:
+    data = make_key_image("Hello")
+    with Image.open(BytesIO(data)) as image:
+        assert image.size == KEY_SIZE
+
+
+def test_blank_jpeg_fills_key_lcd() -> None:
+    data = make_blank()
+    with Image.open(BytesIO(data)) as image:
+        assert image.size == KEY_SIZE
 
 
 def test_long_title_still_fits() -> None:
@@ -65,9 +80,15 @@ def test_wrap_no_break_at_smaller_font() -> None:
 
 
 def test_pick_font_size_avoids_mid_word_breaks() -> None:
-    # Regression: we used to render "Toggle Sidebar" as Toggle / Sideba / r at
-    # 20px. _pick_font_size should drop to a font where Sidebar fits whole.
-    assert _pick_font_size("Toggle Sidebar") <= 18
+    # The picker must not choose a size whose layout splits a word.
+    size = _pick_font_size("Fullscreen")
+    _, char_wrap = _wrap(
+        "Fullscreen",
+        _font(size),
+        KEY_SIZE[0] - 12,
+    )
+    assert min(SIZES) < size < max(SIZES)
+    assert char_wrap is False
     assert _pick_font_size("Save") == 20  # short word should keep the max size
 
 

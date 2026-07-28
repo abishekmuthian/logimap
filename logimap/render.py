@@ -1,4 +1,4 @@
-"""Render a key title into a 90x90 JPEG suitable for MXKeypadDevice.set_key_image."""
+"""Render a key title into an MX Keypad-sized JPEG."""
 
 from __future__ import annotations
 
@@ -8,7 +8,10 @@ from typing import Hashable, Mapping, TypeVar
 
 from PIL import Image, ImageDraw, ImageFont
 
-KEY_SIZE = (90, 90)
+# The native driver programs each key's destination rectangle as 118x118.
+# JPEGs are not scaled by the device, so smaller images only fill the
+# destination's upper-left corner.
+KEY_SIZE = (118, 118)
 JPEG_QUALITY = 85
 MAX_LINES = 3
 LINE_GAP = 3  # extra px between rendered lines
@@ -94,7 +97,7 @@ def make_key_image(
     accent: tuple[int, int, int] = (80, 160, 255),
     size: int | None = None,
 ) -> bytes:
-    """Render title text into a 90x90 JPEG and return the bytes.
+    """Render title text into a 118x118 JPEG and return the bytes.
 
     If `size` is given, render at that exact font size — useful for keeping
     a row/grid of keys visually consistent. Otherwise auto-pick the largest
