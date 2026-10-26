@@ -1,6 +1,6 @@
 # logimap
 
-![logimap Version 0.1.4](https://badgen.net/static/Version/0.1.4/cyan)
+![logimap Version 0.2.5](https://badgen.net/static/Version/0.1.4/cyan)
 
 **Per-application profile manager for the Logitech MX Creative Keypad on Linux.**
 
@@ -9,11 +9,7 @@ or mouse-button macros they fire, automatically, based on the application
 currently focused on your desktop. Author profiles in a small Tk editor;
 a background daemon handles the rest.
 
-https://github.com/user-attachments/assets/95769a6b-8821-4313-b58c-a2f498382c29
-
-[Watch the keypad mouse macro demo](demo/logimap-keypad-mouse-macro-demo.mp4)
-
-![Logimap editor showing a Sifu mouse macro, drag-to-rearrange guidance, and two pages of bindings](demo/keymap-macro.jpg)
+https://github.com/user-attachments/assets/5b78fd41-d095-4912-a823-83a7df15d3c8
 
 **Disclaimer:** This is not an official Logitech™ application. This project is not affiliated with, endorsed by, or sponsored by Logitech.
 
