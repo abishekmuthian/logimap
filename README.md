@@ -11,6 +11,8 @@ a background daemon handles the rest.
 
 https://github.com/user-attachments/assets/95769a6b-8821-4313-b58c-a2f498382c29
 
+[Watch the keypad mouse macro demo](demo/logimap-keypad-mouse-macro-demo.mp4)
+
 ![Logimap editor showing a Sifu mouse macro, drag-to-rearrange guidance, and two pages of bindings](demo/keymap-macro.jpg)
 
 **Disclaimer:** This is not an official Logitech™ application. This project is not affiliated with, endorsed by, or sponsored by Logitech.
@@ -25,7 +27,7 @@ https://github.com/user-attachments/assets/95769a6b-8821-4313-b58c-a2f498382c29
 - **[Timing support](#holds-and-pauses):** set holds with `@milliseconds`
   and pauses with `wait:milliseconds`, for example
   `mouse_right@500,wait:300,mouse_left`.
-- **[Pagination](#multiple-pages):** create multiple pages of nine bindings
+- ✅ **[Pagination](#multiple-pages):** create multiple pages of nine bindings
   per profile and browse them with the keypad's left/right buttons.
 - **[Key rearrangement](#rearranging-keys):** drag bindings around the editor
   grid to move or swap their titles and shortcuts together.
