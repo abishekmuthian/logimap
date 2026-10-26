@@ -23,7 +23,7 @@ https://github.com/user-attachments/assets/5b78fd41-d095-4912-a823-83a7df15d3c8
 - **[Timing support](#holds-and-pauses):** set holds with `@milliseconds`
   and pauses with `wait:milliseconds`, for example
   `mouse_right@500,wait:300,mouse_left`.
-- ✅ **[Pagination](#multiple-pages):** create multiple pages of nine bindings
+- **[Pagination](#multiple-pages):** create multiple pages of nine bindings
   per profile and browse them with the keypad's left/right buttons.
 - **[Key rearrangement](#rearranging-keys):** drag bindings around the editor
   grid to move or swap their titles and shortcuts together.
@@ -341,6 +341,10 @@ busctl --user status org.logimap.Focus1
 | `RequestNameReply.IN_QUEUE` in startup log | A second daemon is fighting for the D-Bus name. `pkill -f "logimap run"` and restart. |
 | `ModuleNotFoundError: _logilinux_native` | The SDK was built against a different Python version than the one running the daemon. Re-run `./install.sh`; it picks an interpreter that matches the compiled `.so`. |
 | systemd unit fails to start | `journalctl --user -u logimap -n 50` and inspect. Most often: not in `input` group yet (re-login), or `~/.local/bin` not on the systemd user `PATH`. |
+
+## Roadmap
+
+1. Icon support.
 
 ## Development
 
