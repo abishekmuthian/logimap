@@ -36,3 +36,13 @@ KEY_CODE: dict[str, int] = {
     "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64,
     "f7": 65, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88,
 }
+
+
+# Mouse buttons are EV_KEY codes too, but must be advertised on a mouse device.
+MOUSE_CODE: dict[str, int] = {
+    "mouse_left": 0x110,     # BTN_LEFT
+    "mouse_right": 0x111,    # BTN_RIGHT
+    "mouse_middle": 0x112,   # BTN_MIDDLE
+    "mouse_back": 0x113,     # BTN_SIDE
+    "mouse_forward": 0x114,  # BTN_EXTRA
+}

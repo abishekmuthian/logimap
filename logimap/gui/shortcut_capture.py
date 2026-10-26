@@ -1,4 +1,4 @@
-"""Tk widget that captures a keyboard shortcut on press and emits a canonical string."""
+"""Capture keyboard shortcuts or mouse clicks as canonical shortcut strings."""
 
 from __future__ import annotations
 
@@ -31,6 +31,25 @@ _KEYSYM_MAP = {
 }
 
 
+_MOUSE_BUTTON_MAP = {
+    1: "mouse_left", 2: "mouse_middle", 3: "mouse_right",
+    8: "mouse_back", 9: "mouse_forward",
+}
+
+
+def _modifiers(state: int) -> list[str]:
+    modifiers = [name for mask, name in _MOD_MASK.items() if state & mask]
+    order = {"ctrl": 0, "shift": 1, "alt": 2, "logo": 3}
+    return sorted(modifiers, key=lambda m: order[m])
+
+
+def _normalize_mouse(event: tk.Event) -> str | None:
+    key = _MOUSE_BUTTON_MAP.get(event.num)
+    if key is None:
+        return None  # Tk buttons 4–7 are wheel events, not side buttons.
+    return "+".join(_modifiers(event.state) + [key])
+
+
 def _normalize(event: tk.Event) -> str | None:
     keysym = event.keysym
     if keysym in {
@@ -40,13 +59,7 @@ def _normalize(event: tk.Event) -> str | None:
     }:
         return None
 
-    modifiers: list[str] = []
-    for mask, name in _MOD_MASK.items():
-        if event.state & mask:
-            modifiers.append(name)
-    # Keep a canonical order
-    order = {"ctrl": 0, "shift": 1, "alt": 2, "logo": 3}
-    modifiers.sort(key=lambda m: order.get(m, 99))
+    modifiers = _modifiers(event.state)
 
     if keysym in _KEYSYM_MAP:
         key = _KEYSYM_MAP[keysym]
@@ -63,7 +76,7 @@ def _normalize(event: tk.Event) -> str | None:
 
 
 class ShortcutCapture(ttk.Frame):
-    """Click to focus, then press any key combo. The combo string appears below.
+    """Capture a key combo or click in the entry. The string appears below.
 
     The entry is also directly editable so users can type shortcuts the
     compositor intercepts (e.g. Meta+L on KDE Plasma 6) — those never reach
@@ -89,8 +102,9 @@ class ShortcutCapture(ttk.Frame):
         self._clear = ttk.Button(self, text="Clear", command=self._do_clear)
         self._clear.grid(row=0, column=2, padx=(4, 0))
         self._hint = ttk.Label(
-            self, text="Use , to separate chords, e.g. ctrl+b,shift+' for tmux",
+            self, text="Type timing in ms: mouse_right@500,wait:300,mouse_left. Capture a key or click.",
             foreground="grey50",
+            wraplength=360,
         )
         self._hint.grid(row=1, column=0, columnspan=3, sticky="w")
         self.columnconfigure(0, weight=1)
@@ -111,6 +125,7 @@ class ShortcutCapture(ttk.Frame):
         return self._value.get()
 
     def set(self, value: str) -> None:
+        self._cancel_capture()
         self._suppress_trace = True
         try:
             self._value.set(value)
@@ -120,23 +135,42 @@ class ShortcutCapture(ttk.Frame):
     def _start_capture(self) -> None:
         if self._capturing:
             return
+        self._capture_value = self._value.get()
         self._capturing = True
-        self._btn.configure(text="Press keys…")
+        self._btn.configure(text="Key or click…")
         self._suppress_trace = True
         try:
-            self._value.set("(press any combo)")
+            self._value.set("(press keys or click here)")
         finally:
             self._suppress_trace = False
         self._entry.focus_set()
         self._entry.bind("<Key>", self._on_key)
+        self._entry.bind("<ButtonPress>", self._on_mouse)
+        self._entry.bind("<FocusOut>", lambda _e: self._cancel_capture())
 
     def _on_key(self, event: tk.Event) -> str | None:
         combo = _normalize(event)
         if combo is None:
             return "break"
+        return self._finish_capture(combo)
+
+    def _on_mouse(self, event: tk.Event) -> str:
+        combo = _normalize_mouse(event)
+        if combo is not None:
+            return self._finish_capture(combo)
+        return "break"
+
+    def _cancel_capture(self) -> None:
+        if not self._capturing:
+            return
         self._capturing = False
         self._btn.configure(text="Capture")
-        self._entry.unbind("<Key>")
+        for sequence in ("<Key>", "<ButtonPress>", "<FocusOut>"):
+            self._entry.unbind(sequence)
+        self.set(self._capture_value)
+
+    def _finish_capture(self, combo: str) -> str:
+        self._cancel_capture()
         self._suppress_trace = True
         try:
             self._value.set(combo)
@@ -147,4 +181,5 @@ class ShortcutCapture(ttk.Frame):
         return "break"
 
     def _do_clear(self) -> None:
+        self._cancel_capture()
         self._value.set("")

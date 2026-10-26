@@ -69,17 +69,43 @@ class Profile:
     bg_color: tuple[int, int, int] = (30, 30, 30)
     fg_color: tuple[int, int, int] = (255, 255, 255)
     keys: dict[str, KeyBinding] = field(default_factory=dict)
+    extra_pages: list[dict[str, KeyBinding]] = field(default_factory=list)
 
-    def get(self, key_name: str) -> KeyBinding | None:
-        return self.keys.get(key_name)
+    @property
+    def page_count(self) -> int:
+        return 1 + len(self.extra_pages)
+
+    def page_keys(self, page: int = 0) -> dict[str, KeyBinding]:
+        """Return a page's bindings; the existing keys field is page zero."""
+        if not 0 <= page < self.page_count:
+            raise IndexError(f"page {page} outside profile {self.name!r}")
+        return self.keys if page == 0 else self.extra_pages[page - 1]
+
+    def remove_page(self, page: int) -> None:
+        if self.page_count == 1:
+            raise ValueError("a profile must have at least one page")
+        self.page_keys(page)  # validate before mutating
+        if page == 0:
+            self.keys = self.extra_pages.pop(0)
+        else:
+            self.extra_pages.pop(page - 1)
+
+    def get(self, key_name: str, page: int = 0) -> KeyBinding | None:
+        return self.page_keys(page).get(key_name)
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        data = {
             "match": self.match.to_json(),
             "bg_color": list(self.bg_color),
             "fg_color": list(self.fg_color),
             "keys": {k: v.to_json() for k, v in self.keys.items()},
         }
+        if self.extra_pages:
+            data["extra_pages"] = [
+                {k: v.to_json() for k, v in keys.items()}
+                for keys in self.extra_pages
+            ]
+        return data
 
     @classmethod
     def from_json(cls, name: str, data: dict[str, Any]) -> "Profile":
@@ -92,6 +118,10 @@ class Profile:
                 k: KeyBinding.from_json(v)
                 for k, v in (data.get("keys") or {}).items()
             },
+            extra_pages=[
+                {k: KeyBinding.from_json(v) for k, v in (keys or {}).items()}
+                for keys in (data.get("extra_pages") or [])
+            ],
         )
 
 

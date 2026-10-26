@@ -11,8 +11,8 @@ import subprocess
 
 import time
 
-from ._keycodes import KEY_CODE, MOD_CODE
-from ._parse import parse_shortcut_sequence
+from ._keycodes import KEY_CODE, MOD_CODE, MOUSE_CODE
+from ._parse import ParsedShortcut, ParsedWait, parse_shortcut_sequence
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +35,13 @@ def _build_argv(parsed: ParsedShortcut) -> list[str]:
 class YdotoolInjector:
     def press(self, shortcut: str) -> None:
         chords = parse_shortcut_sequence(shortcut)
+        if any(isinstance(c, ParsedWait) or c.hold_ms is not None for c in chords):
+            raise ValueError("ydotool: timed macros require the built-in uinput injector")
+        if any(chord.held_keys or chord.key in MOUSE_CODE for chord in chords):
+            raise ValueError(
+                "ydotool: mouse buttons and multi-key chords require the built-in uinput injector; "
+                "grant /dev/uinput access (see README)"
+            )
         for i, parsed in enumerate(chords):
             if i > 0:
                 time.sleep(0.05)

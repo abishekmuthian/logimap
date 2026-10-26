@@ -15,8 +15,12 @@ xdotool is XWayland-only and rarely useful on a modern Plasma session.
 
 Multi-chord shortcuts (e.g. tmux prefix sequences) are expressed with commas:
     press("ctrl+b,shift+'")
+Mouse clicks use mouse_left/right/middle/back/forward in the built-in uinput
+backend and can be mixed with keyboard chords (e.g. "1,mouse_left,2").
 Each chord is injected with a 50 ms gap so the receiving application can
 distinguish the chords.  Single chords like "ctrl+t" work unchanged.
+With uinput, "mouse_right@500" holds for 500 ms and "a,wait:300,b" replaces
+the default gap with a 300 ms pause. Other backends reject timed macros.
 """
 
 from __future__ import annotations

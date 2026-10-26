@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import signal
 import threading
-from typing import Callable
 
 from logilinux import MXKeypadButton
 
@@ -32,9 +31,12 @@ class Daemon:
             self._injector = None
         self._focus = KWinFocusSource()
         self._stop = threading.Event()
+        self._paint_requested = threading.Event()
         self._lock = threading.Lock()
         self._current: Profile | None = None
-        self._painted_profile_name: str | None = None
+        self._pages: dict[str, int] = {}
+        self._page = 0
+        self._painted: tuple[int, int] | None = None
         self._pending_profile: Profile | None = None
         self._last_focus: WindowFocus | None = None
 
@@ -70,6 +72,11 @@ class Daemon:
         with self._lock:
             log.info("reloading config")
             self._config = Config.load(self._config.path)
+            self._pages = {
+                name: min(page, self._config.profiles[name].page_count - 1)
+                for name, page in self._pages.items()
+                if name in self._config.profiles
+            }
             if self._last_focus is not None:
                 self._apply_focus(self._last_focus)
 
@@ -92,30 +99,31 @@ class Daemon:
 
     def _apply_focus(self, focus: WindowFocus) -> None:
         profile = resolve(self._config.profiles, focus, self._config.default_profile)
+        page = self._pages.get(profile.name, 0)
         if (
-            self._current is not None
-            and profile.name == self._current.name
-            and self._painted_profile_name == profile.name
+            self._current is profile
+            and self._painted == (id(profile), page)
             and self._pending_profile is None
         ):
             return
         self._current = profile
+        self._page = page
         self._paint_or_defer(profile)
 
     def _paint_or_defer(self, profile: Profile) -> None:
         if self._paint_profile(profile):
-            self._painted_profile_name = profile.name
+            self._painted = (id(profile), self._page)
             self._pending_profile = None
             return
-        self._painted_profile_name = None
+        self._painted = None
         self._pending_profile = profile
         log.info("will retry painting profile %s when keypad is available", profile.name)
 
     def _paint_profile(self, profile: Profile) -> bool:
-        log.info("painting profile: %s", profile.name)
+        log.info("painting profile: %s page %d/%d", profile.name, self._page + 1, profile.page_count)
         titles: dict[MXKeypadButton, str] = {}
         for btn in GRID_BUTTONS:
-            binding = profile.keys.get(btn.name)
+            binding = profile.get(btn.name, self._page)
             titles[btn] = binding.title if binding and binding.title else ""
         images = render.make_profile_images(
             titles, bg=profile.bg_color, fg=profile.fg_color
@@ -123,14 +131,18 @@ class Daemon:
         return self._handle.paint_grid(images)
 
     def _retry_paint(self) -> None:
-        while not self._stop.wait(PAINT_RETRY_SECONDS):
+        while not self._stop.is_set():
+            self._paint_requested.wait(PAINT_RETRY_SECONDS)
+            self._paint_requested.clear()
+            if self._stop.is_set():
+                return
             with self._lock:
                 if (
                     self._pending_profile is None
                     and self._current is not None
                     and not self._handle.is_monitoring()
                 ):
-                    self._painted_profile_name = None
+                    self._painted = None
                     self._pending_profile = self._current
                 if self._pending_profile is not None:
                     self._paint_or_defer(self._pending_profile)
@@ -138,10 +150,23 @@ class Daemon:
     def _on_button(self, btn: MXKeypadButton) -> None:
         with self._lock:
             profile = self._current
+            if profile is not None:
+                if btn in (MXKeypadButton.P1_LEFT, MXKeypadButton.P2_RIGHT):
+                    if profile.page_count > 1:
+                        step = -1 if btn == MXKeypadButton.P1_LEFT else 1
+                        self._page = (self._page + step) % profile.page_count
+                        self._pages[profile.name] = self._page
+                        # The SDK calls us on its monitoring thread. Repainting
+                        # can reconnect and stop that thread, so let the worker
+                        # perform all navigation-triggered device I/O.
+                        self._painted = None
+                        self._pending_profile = profile
+                        self._paint_requested.set()
+                    return
+                binding = profile.get(btn.name, self._page)
         if profile is None:
             log.info("press %s ignored — no active profile yet", btn.name)
             return
-        binding = profile.keys.get(btn.name)
         if binding is None or not binding.shortcut:
             log.info("press %s has no binding in profile %r", btn.name, profile.name)
             return

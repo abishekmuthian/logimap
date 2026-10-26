@@ -39,10 +39,14 @@ class LogimapApp:
         self.root = root
         self.config = Config.load()
         self.current_profile_name: str | None = self._initial_profile()
+        self.current_page = 0
         self._handle: KeypadHandle | None = None
 
         root.title("logimap — keypad profile editor")
         root.minsize(1000, 520)
+        root.attributes("-zoomed", True)
+        root.bind("<F11>", self._toggle_fullscreen)
+        root.bind("<Escape>", self._exit_fullscreen)
 
         self._build_layout()
         self._refresh_profiles()
@@ -72,6 +76,8 @@ class LogimapApp:
         ttk.Button(toolbar, text="Delete", command=self._delete_profile).pack(side="left", padx=2)
 
         ttk.Button(toolbar, text="About", command=self._show_about).pack(side="right", padx=2)
+        self.fullscreen_button = ttk.Button(toolbar, text="Fullscreen (F11)", command=self._toggle_fullscreen)
+        self.fullscreen_button.pack(side="right", padx=2)
         ttk.Button(toolbar, text="Save", command=self._save).pack(side="right", padx=2)
         ttk.Button(toolbar, text="Preview on device", command=self._push_to_device).pack(side="right", padx=2)
 
@@ -80,17 +86,32 @@ class LogimapApp:
 
         main = ttk.Frame(root, padding=6)
         main.pack(side="top", fill="both", expand=True)
+        main.columnconfigure((0, 1), weight=1, uniform="panes")
+        main.rowconfigure(0, weight=1)
 
         # Left: keypad grid preview
         left = ttk.Frame(main)
-        left.pack(side="left", fill="y", padx=(0, 12))
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         ttk.Label(left, text="Preview (click a key to edit)", font=("", 10, "bold")).pack(anchor="w")
-        self.grid = KeypadGrid(left, on_select=self._on_key_select)
-        self.grid.pack()
+        self.grid = KeypadGrid(left, on_select=self._on_key_select, on_reorder=self._reorder_keys)
+        self.grid.pack(fill="both", expand=True)
+        ttk.Label(left, text="Drag to move; drop on a bound key to swap.",
+                  foreground="gray", wraplength=260).pack(anchor="w")
+        pages = ttk.Frame(left)
+        pages.pack(fill="x", pady=4)
+        ttk.Button(pages, text="Previous", command=lambda: self._change_page(-1)).pack(side="left")
+        self.page_label = ttk.Label(pages, anchor="center")
+        self.page_label.pack(side="left", fill="x", expand=True, padx=4)
+        ttk.Button(pages, text="Next", command=lambda: self._change_page(1)).pack(side="right")
+        page_actions = ttk.Frame(left)
+        page_actions.pack(fill="x")
+        ttk.Button(page_actions, text="Add page", command=self._add_page).pack(side="left")
+        self.delete_page_button = ttk.Button(page_actions, text="Delete page", command=self._delete_page)
+        self.delete_page_button.pack(side="right")
 
         # Right: edit pane
         right = ttk.Frame(main)
-        right.pack(side="left", fill="both", expand=True)
+        right.grid(row=0, column=1, sticky="nsew")
 
         match_box = ttk.LabelFrame(right, text="Match", padding=6)
         match_box.pack(side="top", fill="x", pady=(0, 6))
@@ -128,6 +149,16 @@ class LogimapApp:
         self.wm_class_var.trace_add("write", lambda *_: self._match_changed())
         self.title_regex_var.trace_add("write", lambda *_: self._match_changed())
 
+    def _toggle_fullscreen(self, _event: tk.Event | None = None) -> str:
+        fullscreen = not self.root.attributes("-fullscreen")
+        self.root.attributes("-fullscreen", fullscreen)
+        self.fullscreen_button.configure(text="Exit fullscreen (F11)" if fullscreen else "Fullscreen (F11)")
+        return "break"
+
+    def _exit_fullscreen(self, _event: tk.Event | None = None) -> None:
+        self.root.attributes("-fullscreen", False)
+        self.fullscreen_button.configure(text="Fullscreen (F11)")
+
     # ---- profile list ------------------------------------------------------
 
     def _refresh_profiles(self) -> None:
@@ -147,15 +178,53 @@ class LogimapApp:
         if name not in self.config.profiles:
             return
         self.current_profile_name = name
+        self.current_page = 0
         self.profile_var.set(name)
         profile = self._current()
         assert profile is not None
-        self.wm_class_var.set(profile.match.wm_class)
-        self.title_regex_var.set(profile.match.title_regex or "")
-        self.grid.render_profile(profile)
-        # Pre-select GRID_0 for convenience
-        sel = self.grid.selected() or "GRID_0"
-        self.grid.select(sel)
+        self._suspend_trace = True
+        try:
+            self.wm_class_var.set(profile.match.wm_class)
+            self.title_regex_var.set(profile.match.title_regex or "")
+        finally:
+            self._suspend_trace = False
+        self._show_page()
+
+    def _show_page(self) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        self.page_label.configure(text=f"Page {self.current_page + 1} / {profile.page_count}")
+        self.delete_page_button.configure(state="normal" if profile.page_count > 1 else "disabled")
+        self.grid.render_profile(profile, self.current_page)
+        self.grid.select(self.grid.selected() or "GRID_0")
+
+    def _change_page(self, step: int) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        self.current_page = (self.current_page + step) % profile.page_count
+        self._show_page()
+
+    def _add_page(self) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        profile.extra_pages.append({})
+        self.current_page = profile.page_count - 1
+        self._show_page()
+        self._set_status("page added — click Save to apply")
+
+    def _delete_page(self) -> None:
+        profile = self._current()
+        if profile is None or profile.page_count == 1:
+            return
+        if not messagebox.askyesno("Delete page", f"Delete page {self.current_page + 1} and its bindings?"):
+            return
+        profile.remove_page(self.current_page)
+        self.current_page = min(self.current_page, profile.page_count - 1)
+        self._show_page()
+        self._set_status("page deleted — click Save to apply")
 
     def _add_profile(self) -> None:
         name = simpledialog.askstring("New profile", "Profile name (e.g. 'firefox'):", parent=self.root)
@@ -182,13 +251,7 @@ class LogimapApp:
         if name in self.config.profiles:
             messagebox.showerror("Exists", f"Profile {name!r} already exists.")
             return
-        copy = Profile(
-            name=name,
-            match=Match(wm_class=src.match.wm_class, title_regex=src.match.title_regex),
-            bg_color=src.bg_color,
-            fg_color=src.fg_color,
-            keys={k: KeyBinding(v.title, v.shortcut) for k, v in src.keys.items()},
-        )
+        copy = Profile.from_json(name, src.to_json())
         self.config.profiles[name] = copy
         self.current_profile_name = name
         self._refresh_profiles()
@@ -226,8 +289,8 @@ class LogimapApp:
         profile = self._current()
         if profile is None:
             return
-        binding = profile.keys.get(key_name) or KeyBinding()
-        self.selected_key_label.configure(text=key_name, foreground="black")
+        binding = profile.get(key_name, self.current_page) or KeyBinding()
+        self.selected_key_label.configure(text=f"{key_name} (page {self.current_page + 1})", foreground="black")
         # temporarily detach traces by using 'set' but avoid loop
         self._suspend_trace = True
         try:
@@ -244,10 +307,11 @@ class LogimapApp:
         profile = self._current()
         if key is None or profile is None:
             return
-        binding = profile.keys.get(key) or KeyBinding()
+        keys = profile.page_keys(self.current_page)
+        binding = keys.get(key) or KeyBinding()
         binding.title = self.title_var.get()
-        profile.keys[key] = binding
-        self.grid.render_profile(profile)
+        keys[key] = binding
+        self.grid.render_profile(profile, self.current_page)
 
     def _shortcut_changed(self, value: str) -> None:
         if getattr(self, "_suspend_trace", False):
@@ -256,21 +320,44 @@ class LogimapApp:
         profile = self._current()
         if key is None or profile is None:
             return
-        binding = profile.keys.get(key) or KeyBinding()
+        keys = profile.page_keys(self.current_page)
+        binding = keys.get(key) or KeyBinding()
         binding.shortcut = value
-        profile.keys[key] = binding
+        keys[key] = binding
 
     def _clear_key(self) -> None:
         key = self.grid.selected()
         profile = self._current()
         if key is None or profile is None:
             return
-        profile.keys.pop(key, None)
-        self.title_var.set("")
-        self.shortcut_widget.set("")
-        self.grid.render_profile(profile)
+        profile.page_keys(self.current_page).pop(key, None)
+        self._on_key_select(key)
+        self.grid.render_profile(profile, self.current_page)
+
+    def _reorder_keys(self, source: str, target: str) -> None:
+        profile = self._current()
+        if profile is None or source == target:
+            return
+        if source not in KEY_NAMES or target not in KEY_NAMES:
+            return
+        keys = profile.page_keys(self.current_page)
+        if source not in keys and target not in keys:
+            return
+        source_binding = keys.pop(source, None)
+        target_binding = keys.pop(target, None)
+        if source_binding is not None:
+            keys[target] = source_binding
+        if target_binding is not None:
+            keys[source] = target_binding
+        self.grid.render_profile(profile, self.current_page)
+        # Follow the dragged binding and reload under the normal trace guards;
+        # ShortcutCapture.set() also cancels any pending capture placeholder.
+        self.grid.select(target)
+        self._set_status("keys rearranged — click Save to apply")
 
     def _match_changed(self) -> None:
+        if getattr(self, "_suspend_trace", False):
+            return
         profile = self._current()
         if profile is None:
             return
@@ -326,13 +413,13 @@ class LogimapApp:
                 return
         titles = {}
         for btn in GRID_BUTTONS:
-            binding = profile.keys.get(btn.name)
+            binding = profile.get(btn.name, self.current_page)
             titles[btn] = binding.title if binding and binding.title else ""
         images = render.make_profile_images(
             titles, bg=profile.bg_color, fg=profile.fg_color
         )
         self._handle.paint_grid(images)
-        self._set_status(f"previewing {profile.name!r} on device")
+        self._set_status(f"previewing {profile.name!r} page {self.current_page + 1} on device")
 
     def _set_status(self, text: str) -> None:
         self.status.configure(text=text)
