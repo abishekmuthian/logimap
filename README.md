@@ -1,6 +1,6 @@
 # logimap
 
-![logimap Version 0.2.5](https://badgen.net/static/Version/0.1.4/cyan)
+![logimap Version 0.2.5](https://badgen.net/static/Version/0.2.5/cyan)
 
 **Per-application profile manager for the Logitech MX Creative Keypad on Linux.**
 
