@@ -121,3 +121,30 @@ def test_profile_images_all_blank_when_empty() -> None:
     blank = make_blank((30, 30, 30))
     assert images["a"] == blank
     assert images["b"] == blank
+
+
+def test_icon_key_renders_from_file(tmp_path) -> None:
+    icon = tmp_path / "dot.png"
+    Image.new("RGBA", (32, 32), (255, 0, 0, 255)).save(icon)
+    imgs = make_profile_images(
+        {"a": "", "b": "Label", "c": "Text"},
+        icons={"a": str(icon), "b": str(icon), "c": ""},
+    )
+    for k in "abc":
+        assert imgs[k][:3] == b"\xff\xd8\xff"
+    # icon-only key is mostly red in the middle
+    px = Image.open(BytesIO(imgs["a"])).convert("RGB").getpixel((59, 59))
+    assert px[0] > 200 and px[1] < 60
+
+
+def test_icon_field_roundtrips_and_is_omitted_when_empty() -> None:
+    from logimap.profiles import KeyBinding
+
+    assert KeyBinding.from_json(KeyBinding(icon="x").to_json()).icon == "x"
+    assert KeyBinding(title="t").to_json() == {"title": "t", "shortcut": ""}
+    assert KeyBinding.from_json({"title": "t", "shortcut": ""}).icon == ""
+
+
+def test_missing_icon_falls_back_to_text() -> None:
+    imgs = make_profile_images({"a": "Hi"}, icons={"a": "/nonexistent/icon.png"})
+    assert imgs["a"] == make_profile_images({"a": "Hi"})["a"]

@@ -27,6 +27,9 @@ https://github.com/user-attachments/assets/5b78fd41-d095-4912-a823-83a7df15d3c8
   per profile and browse them with the keypad's left/right buttons.
 - **[Key rearrangement](#rearranging-keys):** drag bindings around the editor
   grid to move or swap their titles and shortcuts together.
+- **[Key icons](#key-icons):** show an image (PNG, JPEG, SVG, ...) or any
+  installed theme icon such as `firefox` or `media-playback-start` on a key,
+  with or without a title underneath.
 - **Live editing:** save to hot-reload the daemon, preview a page's labels
   on the device, and duplicate profiles with all their pages.
 
@@ -65,7 +68,7 @@ It's a plain bash script, so read it before running. In order, it:
    `--force` to override).
 2. Detects your distro (Fedora, Debian/Ubuntu, or Arch) and installs the
    build deps (`cmake`, `g++`, `python3-tkinter`, `python3-pillow-tk`,
-   `pybind11`, `git`, `acl`).
+   `pybind11`, `git`, `acl`) plus `rsvg-convert` (librsvg) for SVG key icons.
 3. `git submodule update --init`, which pulls `logilinux/` and `logilinux-sdk/`
    from the upstream `github.com/logilinux/` org.
 4. Builds the C++ core (`logilinux/`) with CMake.
@@ -223,9 +226,42 @@ copies all of a profile's pages, bindings, colors, and matching rules.
 Press **Esc** or drop outside the grid to cancel a drag. Switching pages
 also cancels an active drag.
 
+### Key icons
+
+1. Select a key and fill in **Icon** with either:
+    - **an image file**: click **Browse…** or type a path. PNG, JPEG, SVG,
+      WebP, GIF, and XPM work. `~` is expanded, and relative paths are
+      relative to your home directory.
+    - **an icon name** from your installed icon themes, e.g. `firefox`,
+      `org.kde.dolphin`, `utilities-terminal`, `media-playback-start`,
+      `audio-volume-muted`. Short names find reverse-DNS app icons too, so
+      `spotify` finds Flatpak's `com.spotify.Client`. Browse names with
+      KDE's **Icon Explorer** (`cuttlefish`, in the `plasma-sdk` package), or look in
+      `/usr/share/icons/breeze/`.
+2. With a **Title**, the icon is drawn with the title as a small label
+   underneath (up to two lines); leave the title empty for a large icon on
+   its own.
+3. The editor grid previews the result immediately. **Save** to apply it to
+   the daemon.
+
+Icon names are looked up in Breeze, hicolor (including Flatpak app icons),
+Adwaita, and Oxygen. Monochrome Breeze icons use the variant that
+contrasts with the profile's `bg_color` (Breeze Dark on dark keys). Inside
+a distrobox/toolbox, the host's themes are searched as well. If an icon
+can't be found or decoded, the key falls back to its text title and the
+log shows `icon not found`.
+
+Saving the config also rescans icon themes, so icons from newly installed
+apps work without restarting the daemon.
+
+SVGs are rasterized with `rsvg-convert` (installed by `install.sh`). If it's
+missing, logimap falls back to the `cairosvg` Python package, which you can
+add to logimap's venv with
+`~/.local/share/logimap/venv/bin/pip install cairosvg`.
+
 ### After updating Logimap
 
-Restart a running daemon to load mouse, timing, and pagination support:
+Restart a running daemon to load mouse, timing, pagination, and icon support:
 
 ```bash
 systemctl --user restart logimap
@@ -249,7 +285,7 @@ config-only edits still hot-reload when saved.
       "bg_color": [30, 30, 30],
       "fg_color": [255, 255, 255],
       "keys": {
-        "GRID_0": {"title": "New Tab",    "shortcut": "ctrl+t"},
+        "GRID_0": {"title": "New Tab",    "shortcut": "ctrl+t", "icon": "tab-new"},
         "GRID_1": {"title": "Close Tab",  "shortcut": "ctrl+w"},
         "GRID_2": {"title": "Reopen Tab", "shortcut": "ctrl+shift+t"},
         "GRID_3": {"title": "Split V",    "shortcut": "ctrl+b,\""},
@@ -286,6 +322,8 @@ page 3, and so on, each with the same `GRID_0`–`GRID_8` binding format.
 Existing version 1 configs remain valid without changes. Empty pages are
 preserved, and each page shares its profile's colors and matching rules.
 Mouse macros and timing are stored in the existing `shortcut` string.
+The optional `icon` is an image path or a theme icon name (see
+[Key icons](#key-icons)); bindings without one are saved without the field.
 Rearranging keys changes their `GRID_0`–`GRID_8` assignments within that page.
 
 ## Auto-start at login
@@ -338,13 +376,10 @@ busctl --user status org.logimap.Focus1
 | `No usable keystroke injector found` | Your user can't open `/dev/uinput`. Re-login after `install.sh` (the `input` group needs a fresh session) or `sudo setfacl -m u:$USER:rw /dev/uinput` for a one-shot. |
 | `wtype failed for ... exit 1` | KWin 6 hides `zwp_virtual_keyboard_v1` from non-IME clients. The probe should have skipped wtype and selected uinput; check the startup log line `using built-in uinput injector`. |
 | `MX Keypad not found` | `lsusb \| grep 046d:c354` should show the device. If `/dev/hidraw*` is `crw-rw----` instead of `crw-rw-rw-`, the udev rule didn't apply; try `sudo udevadm trigger --subsystem-match=hidraw` and replug. |
+| Key shows its title instead of the icon | Look for `icon not found` or `cannot rasterize SVG` in the log. Check the path or icon name (theme names have no extension), and for SVGs make sure `rsvg-convert` is installed (`librsvg2-tools` on Fedora, `librsvg2-bin` on Debian/Ubuntu, `librsvg` on Arch). |
 | `RequestNameReply.IN_QUEUE` in startup log | A second daemon is fighting for the D-Bus name. `pkill -f "logimap run"` and restart. |
 | `ModuleNotFoundError: _logilinux_native` | The SDK was built against a different Python version than the one running the daemon. Re-run `./install.sh`; it picks an interpreter that matches the compiled `.so`. |
 | systemd unit fails to start | `journalctl --user -u logimap -n 50` and inspect. Most often: not in `input` group yet (re-login), or `~/.local/bin` not on the systemd user `PATH`. |
-
-## Roadmap
-
-1. Icon support.
 
 ## Development
 

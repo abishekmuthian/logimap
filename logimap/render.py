@@ -6,7 +6,13 @@ from io import BytesIO
 from pathlib import Path
 from typing import Hashable, Mapping, TypeVar
 
+import logging
+
 from PIL import Image, ImageDraw, ImageFont
+
+from . import icons as _icons
+
+_log = logging.getLogger(__name__)
 
 # The native driver programs each key's destination rectangle as 118x118.
 # JPEGs are not scaled by the device, so smaller images only fill the
@@ -89,6 +95,89 @@ def _pick_font_size(title: str, *, subtitle: str | None = None) -> int:
     return SIZES[-1]
 
 
+ICON_ONLY_SIZE = 88
+ICON_WITH_LABEL_SIZE = 70
+ICON_LABEL_SIZES = (15, 14, 13, 12, 11, 10, 9)
+ICON_LABEL_MAX_LINES = 2
+ELLIPSIS = "…"
+
+
+def _is_dark(rgb: tuple[int, int, int]) -> bool:
+    r, g, b = rgb
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 128
+
+
+def _truncate(lines: list[str], font, max_width: int, n: int) -> list[str]:
+    """Keep the first `n` lines, ending the last with an ellipsis if cut."""
+    if len(lines) <= n:
+        return lines
+    kept = lines[:n]
+    last = kept[-1]
+    while last and font.getlength(last + ELLIPSIS) > max_width:
+        last = last[:-1]
+    kept[-1] = last.rstrip() + ELLIPSIS
+    return kept
+
+
+def _encode(img: Image.Image) -> bytes:
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG", quality=JPEG_QUALITY)
+    return buffer.getvalue()
+
+
+def _layout_icon_label(title: str) -> tuple[list[str], ImageFont.ImageFont]:
+    """Wrap an icon label: the largest size at which it fits in two lines
+    without breaking a word, else the smallest size cut with an ellipsis."""
+    font_path = _font_path()
+    max_width = KEY_SIZE[0] - 8
+    for sz in ICON_LABEL_SIZES:
+        font = ImageFont.truetype(font_path, sz) if font_path else ImageFont.load_default()
+        lines, char_wrapped = _wrap(title, font, max_width)
+        if len(lines) <= ICON_LABEL_MAX_LINES and not char_wrapped:
+            return lines, font
+    return _truncate(lines, font, max_width, ICON_LABEL_MAX_LINES), font
+
+
+def make_icon_image(
+    icon: str,
+    title: str = "",
+    bg: tuple[int, int, int] = (30, 30, 30),
+    fg: tuple[int, int, int] = (255, 255, 255),
+) -> bytes | None:
+    """Render an icon (optionally with a one/two-line label under it).
+
+    Returns None if the icon can't be found or decoded, so callers can fall
+    back to a text-only key.
+    """
+    title = title.strip()
+    box = ICON_WITH_LABEL_SIZE if title else ICON_ONLY_SIZE
+    icon_img = _icons.load(icon, box, dark=_is_dark(bg))
+    if icon_img is None:
+        return None
+    img = Image.new("RGB", KEY_SIZE, color=bg)
+    draw = ImageDraw.Draw(img)
+
+    label_lines: list[str] = []
+    label_font = None
+    line_h = 0
+    if title:
+        label_lines, label_font = _layout_icon_label(title)
+        line_h = label_font.getbbox("Ag")[3] - label_font.getbbox("Ag")[1]
+
+    label_h = line_h * len(label_lines) + LINE_GAP * max(0, len(label_lines) - 1)
+    gap = 6 if label_lines else 0
+    total_h = icon_img.height + gap + label_h
+    y = (KEY_SIZE[1] - total_h) // 2
+    x = (KEY_SIZE[0] - icon_img.width) // 2
+    img.paste(icon_img, (x, y), icon_img)
+    y += icon_img.height + gap
+    for line in label_lines:
+        w = label_font.getlength(line)
+        draw.text(((KEY_SIZE[0] - w) // 2, y), line, font=label_font, fill=fg)
+        y += line_h + LINE_GAP
+    return _encode(img)
+
+
 def make_key_image(
     title: str,
     subtitle: str | None = None,
@@ -154,19 +243,32 @@ def make_profile_images(
     *,
     bg: tuple[int, int, int] = (30, 30, 30),
     fg: tuple[int, int, int] = (255, 255, 255),
+    icons: Mapping[K, str] | None = None,
 ) -> dict[K, bytes]:
     """Render a set of keys at one shared font size for visual consistency.
 
-    Picks the smallest size needed by any non-empty title in the set. Empty
-    titles get a blank tile in the same `bg` color.
+    Picks the smallest size needed by any non-empty, text-only title in the
+    set. Keys with a resolvable entry in `icons` are drawn as icons (with
+    their title as a small label). Empty keys get a blank tile in `bg`.
     """
+    icons = icons or {}
     blank = make_blank(bg)
-    nonempty = [t for t in titles.values() if t]
-    if not nonempty:
-        return {k: blank for k in titles}
-    common_size = min(_pick_font_size(t) for t in nonempty)
     out: dict[K, bytes] = {}
     for key, title in titles.items():
+        icon = icons.get(key) or ""
+        if icon:
+            try:
+                rendered = make_icon_image(icon, title, bg=bg, fg=fg)
+            except Exception:  # a broken icon must never stop painting
+                _log.exception("cannot render icon %r; using its title", icon)
+                rendered = None
+            if rendered is not None:
+                out[key] = rendered
+    nonempty = [t for k, t in titles.items() if t and k not in out]
+    common_size = min((_pick_font_size(t) for t in nonempty), default=SIZES[0])
+    for key, title in titles.items():
+        if key in out:
+            continue
         if title:
             out[key] = make_key_image(title, bg=bg, fg=fg, size=common_size)
         else:

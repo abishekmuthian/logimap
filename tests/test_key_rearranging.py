@@ -30,10 +30,40 @@ def editor(tmp_path):
     app.title_var = Mock()
     app.title_var.set.side_effect = lambda _: app._title_changed()
     app.shortcut_widget = Mock()
+    app.icon_var = Mock()
+    app.icon_var.get.return_value = ""
     app.selected_key_label = Mock()
     app._set_key_enabled = Mock()
     app._set_status = Mock()
     return app
+
+
+def test_icon_edit_updates_only_selected_binding(editor):
+    editor.grid.selected = Mock(return_value="GRID_1")
+    editor.icon_var.get.return_value = "  media-playback-start "
+    editor._icon_changed()
+    binding = editor._current().get("GRID_1", 1)
+    assert (binding.title, binding.shortcut, binding.icon) == ("Paste", "ctrl+v", "media-playback-start")
+    assert editor._current().get("GRID_0", 1).icon == ""
+    editor.grid.render_profile.assert_called_once_with(editor._current(), 1)
+
+
+def test_icon_on_empty_key_creates_binding_and_moves_with_drag(editor):
+    editor.grid.selected = Mock(return_value="GRID_5")
+    editor.icon_var.get.return_value = "firefox"
+    editor._icon_changed()
+    assert editor._current().get("GRID_5", 1) == KeyBinding(icon="firefox")
+    editor._reorder_keys("GRID_5", "GRID_0")
+    assert editor._current().get("GRID_0", 1).icon == "firefox"
+    assert editor._current().get("GRID_5", 1).title == "Combo"
+
+
+def test_icon_edit_ignored_while_loading_a_key(editor):
+    editor._suspend_trace = True
+    editor.grid.selected = Mock(return_value="GRID_1")
+    editor.icon_var.get.return_value = "firefox"
+    editor._icon_changed()
+    assert editor._current().get("GRID_1", 1).icon == ""
 
 
 @pytest.mark.parametrize("target", ["GRID_1", "GRID_8"])

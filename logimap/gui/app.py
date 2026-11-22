@@ -6,10 +6,10 @@ import logging
 import re
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from ..config import Config
-from ..profiles import KEY_NAMES, KeyBinding, Match, Profile
+from ..profiles import KEY_NAMES, KeyBinding, Match, Profile, page_titles_and_icons
 from .. import render
 from .keypad_grid import KeypadGrid
 from .shortcut_capture import ShortcutCapture
@@ -141,7 +141,22 @@ class LogimapApp:
         self.shortcut_widget.grid(row=2, column=1, sticky="ew", pady=(6, 0))
         self.key_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(self.key_frame, text="Clear key", command=self._clear_key).grid(row=3, column=1, sticky="e", pady=(6, 0))
+        ttk.Label(self.key_frame, text="Icon:").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        icon_row = ttk.Frame(self.key_frame)
+        icon_row.grid(row=3, column=1, sticky="ew", pady=(6, 0))
+        self.icon_var = tk.StringVar()
+        self.icon_entry = ttk.Entry(icon_row, textvariable=self.icon_var, width=24)
+        self.icon_entry.pack(side="left", fill="x", expand=True)
+        self.icon_browse = ttk.Button(icon_row, text="Browse…", command=self._browse_icon)
+        self.icon_browse.pack(side="left", padx=(4, 0))
+        self.icon_var.trace_add("write", lambda *_: self._icon_changed())
+        ttk.Label(
+            self.key_frame,
+            text="Image file (PNG/JPG/SVG) or icon name, e.g. firefox, utilities-terminal",
+            foreground="gray",
+        ).grid(row=4, column=1, sticky="w")
+
+        ttk.Button(self.key_frame, text="Clear key", command=self._clear_key).grid(row=5, column=1, sticky="e", pady=(6, 0))
 
         self._set_key_enabled(False)
 
@@ -279,6 +294,8 @@ class LogimapApp:
     def _set_key_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
         self.title_entry.configure(state=state)
+        self.icon_entry.configure(state=state)
+        self.icon_browse.configure(state=state)
         for child in self.shortcut_widget.winfo_children():
             try:
                 child.configure(state=state)
@@ -296,6 +313,7 @@ class LogimapApp:
         try:
             self.title_var.set(binding.title)
             self.shortcut_widget.set(binding.shortcut)
+            self.icon_var.set(binding.icon)
         finally:
             self._suspend_trace = False
         self._set_key_enabled(True)
@@ -312,6 +330,34 @@ class LogimapApp:
         binding.title = self.title_var.get()
         keys[key] = binding
         self.grid.render_profile(profile, self.current_page)
+
+    def _icon_changed(self) -> None:
+        if getattr(self, "_suspend_trace", False):
+            return
+        key = self.grid.selected()
+        profile = self._current()
+        if key is None or profile is None:
+            return
+        keys = profile.page_keys(self.current_page)
+        binding = keys.get(key) or KeyBinding()
+        binding.icon = self.icon_var.get().strip()
+        keys[key] = binding
+        self.grid.render_profile(profile, self.current_page)
+
+    def _browse_icon(self) -> None:
+        current = self.icon_var.get().strip()
+        start = Path(current).expanduser().parent if "/" in current else Path.home()
+        path = filedialog.askopenfilename(
+            parent=self.root,
+            title="Choose key icon",
+            initialdir=str(start) if start.is_dir() else str(Path.home()),
+            filetypes=[
+                ("Images", "*.png *.svg *.jpg *.jpeg *.webp *.gif *.xpm"),
+                ("All files", "*"),
+            ],
+        )
+        if path:
+            self.icon_var.set(path)
 
     def _shortcut_changed(self, value: str) -> None:
         if getattr(self, "_suspend_trace", False):
@@ -411,12 +457,9 @@ class LogimapApp:
                 self._handle = None
                 messagebox.showerror("Device not ready", str(e))
                 return
-        titles = {}
-        for btn in GRID_BUTTONS:
-            binding = profile.get(btn.name, self.current_page)
-            titles[btn] = binding.title if binding and binding.title else ""
+        titles, icons = page_titles_and_icons(profile, GRID_BUTTONS, self.current_page)
         images = render.make_profile_images(
-            titles, bg=profile.bg_color, fg=profile.fg_color
+            titles, bg=profile.bg_color, fg=profile.fg_color, icons=icons
         )
         self._handle.paint_grid(images)
         self._set_status(f"previewing {profile.name!r} page {self.current_page + 1} on device")
