@@ -156,19 +156,19 @@ case "$DISTRO" in
         sudo dnf install -y \
             cmake gcc-c++ git acl \
             python3-devel python3-tkinter python3-pillow-tk \
-            pybind11-devel
+            pybind11-devel librsvg2-tools
         ;;
     debian)
         sudo apt-get update
         sudo apt-get install -y \
             cmake g++ git acl \
             python3-dev python3-venv python3-tk python3-pil.imagetk \
-            python3-pybind11
+            python3-pybind11 librsvg2-bin
         ;;
     arch)
         sudo pacman -S --needed --noconfirm \
             cmake gcc git acl \
-            python tk python-pillow pybind11
+            python tk python-pillow pybind11 librsvg
         ;;
 esac
 

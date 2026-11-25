@@ -31,6 +31,10 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+# Fallback SVG rasterizer for key icons when `rsvg-convert` isn't installed.
+svg = [
+    "cairosvg>=2.5",
+]
 
 [project.urls]
 Homepage = "https://github.com/abishekmuthian/logimap"

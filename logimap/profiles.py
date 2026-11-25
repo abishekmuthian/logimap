@@ -25,15 +25,20 @@ class WindowFocus:
 class KeyBinding:
     title: str = ""
     shortcut: str = ""
+    icon: str = ""  # image path or freedesktop icon name; see logimap.icons
 
     def to_json(self) -> dict[str, Any]:
-        return {"title": self.title, "shortcut": self.shortcut}
+        data = {"title": self.title, "shortcut": self.shortcut}
+        if self.icon:
+            data["icon"] = self.icon
+        return data
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "KeyBinding":
         return cls(
             title=str(data.get("title", "")),
             shortcut=str(data.get("shortcut", "")),
+            icon=str(data.get("icon", "") or ""),
         )
 
 
@@ -123,6 +128,22 @@ class Profile:
                 for keys in (data.get("extra_pages") or [])
             ],
         )
+
+
+def page_titles_and_icons(
+    profile: Profile, names: Any, page: int = 0
+) -> tuple[dict[Any, str], dict[Any, str]]:
+    """Collect (titles, icons) for a page, keyed by each item in `names`.
+
+    `names` may be key-name strings or enum members with a ``.name``.
+    """
+    titles: dict[Any, str] = {}
+    icons: dict[Any, str] = {}
+    for n in names:
+        binding = profile.get(getattr(n, "name", n), page)
+        titles[n] = binding.title if binding and binding.title else ""
+        icons[n] = binding.icon if binding and binding.icon else ""
+    return titles, icons
 
 
 def resolve(profiles: dict[str, Profile], focus: WindowFocus, default_name: str) -> Profile:

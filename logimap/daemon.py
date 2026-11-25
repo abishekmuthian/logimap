@@ -9,11 +9,12 @@ import threading
 from logilinux import MXKeypadButton
 
 from . import render
+from .icons import clear_caches as clear_icon_caches
 from .config import Config
 from .device import GRID_BUTTONS, KeypadHandle, KeypadUnavailable
 from .focus.kwin_dbus import KWinFocusSource
 from .inject import get_injector
-from .profiles import Profile, WindowFocus, resolve
+from .profiles import Profile, WindowFocus, page_titles_and_icons, resolve
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class Daemon:
         with self._lock:
             log.info("reloading config")
             self._config = Config.load(self._config.path)
+            clear_icon_caches()  # pick up newly installed apps/icon themes
             self._pages = {
                 name: min(page, self._config.profiles[name].page_count - 1)
                 for name, page in self._pages.items()
@@ -121,12 +123,9 @@ class Daemon:
 
     def _paint_profile(self, profile: Profile) -> bool:
         log.info("painting profile: %s page %d/%d", profile.name, self._page + 1, profile.page_count)
-        titles: dict[MXKeypadButton, str] = {}
-        for btn in GRID_BUTTONS:
-            binding = profile.get(btn.name, self._page)
-            titles[btn] = binding.title if binding and binding.title else ""
+        titles, icons = page_titles_and_icons(profile, GRID_BUTTONS, self._page)
         images = render.make_profile_images(
-            titles, bg=profile.bg_color, fg=profile.fg_color
+            titles, bg=profile.bg_color, fg=profile.fg_color, icons=icons
         )
         return self._handle.paint_grid(images)
 

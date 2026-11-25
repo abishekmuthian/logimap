@@ -18,7 +18,7 @@ else:
     _IMAGETK_ERROR = None
 
 from .. import render
-from ..profiles import KEY_NAMES, Profile
+from ..profiles import KEY_NAMES, Profile, page_titles_and_icons
 
 
 class KeypadGrid(ttk.Frame):
@@ -170,12 +170,9 @@ class KeypadGrid(ttk.Frame):
             blank = render.make_blank()
             images = {name: blank for name in KEY_NAMES}
         else:
-            titles = {}
-            for name in KEY_NAMES:
-                binding = profile.get(name, page)
-                titles[name] = binding.title if binding and binding.title else ""
+            titles, icons = page_titles_and_icons(profile, KEY_NAMES, page)
             images = render.make_profile_images(
-                titles, bg=profile.bg_color, fg=profile.fg_color
+                titles, bg=profile.bg_color, fg=profile.fg_color, icons=icons
             )
         self._images = images
         self._render_images()

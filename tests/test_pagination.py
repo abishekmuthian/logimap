@@ -199,6 +199,21 @@ def test_reload_repaints_updated_page_and_clamps_removed_pages(runtime):
     app._injector.press.assert_not_called()
 
 
+def test_reload_rescans_icons_and_paint_passes_icons(runtime, monkeypatch):
+    app = runtime.app
+    clear = Mock()
+    monkeypatch.setattr(sys.modules["logimap.daemon"], "clear_icon_caches", clear)
+    profile = paged_profile()
+    profile.keys["GRID_0"].icon = "firefox"
+    runtime.loader.return_value = Config(profiles={"default": profile})
+    make = sys.modules["logimap.daemon"].render.make_profile_images
+    app._reload()
+    clear.assert_called_once_with()
+    icons = make.call_args.kwargs["icons"]
+    assert icons[runtime.buttons.GRID_0] == "firefox"
+    assert icons[runtime.buttons.GRID_1] == ""
+
+
 def test_retry_uses_latest_page_after_failed_paint(runtime):
     app, buttons = runtime.app, runtime.buttons
     runtime.handle.paint_grid.return_value = False
@@ -259,6 +274,8 @@ def editor():
     app.grid.select.side_effect = app._on_key_select
     app.title_var = Mock()
     app.shortcut_widget = Mock()
+    app.icon_var = Mock()
+    app.icon_var.get.return_value = ""
     app.selected_key_label = Mock()
     app.page_label = Mock()
     app.delete_page_button = Mock()
