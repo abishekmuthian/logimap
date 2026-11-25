@@ -301,3 +301,23 @@ def test_whitespace_title_uses_full_size_icon(tmp_path) -> None:
     png = tmp_path / "dot.png"
     Image.new("RGBA", (32, 32), (255, 0, 0, 255)).save(png)
     assert render.make_icon_image(str(png), "   ") == render.make_icon_image(str(png), "")
+
+
+def test_label_position_ignores_icon_aspect(tmp_path) -> None:
+    """A wide icon is centred in its square slot, so its label sits at the
+    same height as a square icon's."""
+    square, wide = tmp_path / "square.png", tmp_path / "wide.png"
+    Image.new("RGBA", (64, 64), (255, 0, 0, 255)).save(square)
+    Image.new("RGBA", (64, 32), (255, 0, 0, 255)).save(wide)
+    bg = (0, 0, 0)
+
+    def label_top(path: Path) -> int:
+        img = Image.open(BytesIO(render.make_icon_image(str(path), "Mail", bg=bg)))
+        img = img.convert("RGB")
+        # The label is the white text; the icon is red.
+        for y in range(img.height):
+            if any(min(img.getpixel((x, y))) > 200 for x in range(img.width)):
+                return y
+        raise AssertionError("no label drawn")
+
+    assert label_top(wide) == label_top(square)

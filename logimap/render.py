@@ -186,11 +186,14 @@ def make_icon_image(
 
     label_h = line_h * len(label_lines) + LINE_GAP * max(0, len(label_lines) - 1)
     gap = 6 if label_lines else 0
-    total_h = icon_img.height + gap + label_h
+    # Lay out against the full square box, not the icon's own height, so a
+    # wide icon (e.g. 70x53) is centred in its slot and its label lines up
+    # with the labels on square-icon keys.
+    total_h = box + gap + label_h
     y = (KEY_SIZE[1] - total_h) // 2
     x = (KEY_SIZE[0] - icon_img.width) // 2
-    img.paste(icon_img, (x, y), icon_img)
-    y += icon_img.height + gap
+    img.paste(icon_img, (x, y + (box - icon_img.height) // 2), icon_img)
+    y += box + gap
     for line in label_lines:
         w = label_font.getlength(line)
         draw.text(((KEY_SIZE[0] - w) // 2, y), line, font=label_font, fill=fg)
