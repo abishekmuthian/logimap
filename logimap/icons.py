@@ -7,7 +7,7 @@ logimap runs inside a distrobox/toolbox container, the host's themes under
 ``/run/host`` are searched too.
 
 SVGs are rasterized with ``rsvg-convert`` (librsvg) when it is installed,
-falling back to the optional ``cairosvg`` Python package.
+then KDE's ``ksvgtopng``, then the optional ``cairosvg`` Python package.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
@@ -183,6 +185,11 @@ def _rasterize_svg(path: Path, size: int) -> Image.Image | None:
             return Image.open(BytesIO(out)).convert("RGBA")
         except (subprocess.SubprocessError, OSError) as e:
             log.warning("rsvg-convert failed for %s: %s", path, e)
+    exe = shutil.which("ksvgtopng")
+    if exe:
+        img = _ksvgtopng(exe, path, size)
+        if img is not None:
+            return img
     try:
         import cairosvg  # type: ignore[import-not-found]
 
@@ -193,6 +200,47 @@ def _rasterize_svg(path: Path, size: int) -> Image.Image | None:
             "cannot rasterize SVG %s: install rsvg-convert (librsvg2-tools / "
             "librsvg2-bin / librsvg) or `pip install cairosvg`: %s", path, e
         )
+    return None
+
+
+def _svg_aspect(path: Path) -> float:
+    """Width / height of an SVG from its viewBox or width/height; 1.0 if unknown."""
+    def num(v: str | None) -> float | None:
+        m = re.match(r"\s*([0-9.]+)", v or "")
+        try:
+            return float(m.group(1)) if m else None
+        except ValueError:
+            return None
+
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return 1.0
+    box = (root.get("viewBox") or "").replace(",", " ").split()
+    if len(box) == 4:
+        w, h = num(box[2]), num(box[3])
+    else:
+        w, h = num(root.get("width")), num(root.get("height"))
+    return w / h if w and h else 1.0
+
+
+def _ksvgtopng(exe: str, path: Path, size: int) -> Image.Image | None:
+    """Rasterize with KDE's ksvgtopng, which stretches to the size it is given,
+    so pass the box scaled to the SVG's own aspect ratio."""
+    aspect = _svg_aspect(path)
+    w, h = (size, max(1, round(size / aspect))) if aspect >= 1 else (max(1, round(size * aspect)), size)
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    with tempfile.TemporaryDirectory(prefix="logimap-svg-") as tmp:
+        out = Path(tmp) / "icon.png"
+        try:
+            subprocess.run(
+                [exe, str(w), str(h), str(path.absolute()), str(out)],
+                stdin=subprocess.DEVNULL, capture_output=True, check=True, timeout=10, env=env,
+            )
+            with Image.open(out) as img:
+                return img.convert("RGBA")
+        except (subprocess.SubprocessError, OSError) as e:
+            log.warning("ksvgtopng failed for %s: %s", path, e)
     return None
 
 

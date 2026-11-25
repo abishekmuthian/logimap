@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Hashable, Mapping, TypeVar
@@ -30,11 +33,28 @@ _FONT_CANDIDATES = [
 ]
 
 
+@lru_cache(maxsize=1)
 def _font_path() -> str | None:
     for p in _FONT_CANDIDATES:
         if Path(p).exists():
             return p
-    return None
+    return _fc_match("DejaVu Sans:style=Bold")
+
+
+def _fc_match(pattern: str) -> str | None:
+    """Ask fontconfig for the closest font file, e.g. a user-installed copy
+    under ~/.local/share/fonts or a stand-in bold sans."""
+    exe = shutil.which("fc-match")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run(
+            [exe, "-f", "%{file}", pattern],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return out if out and Path(out).is_file() else None
 
 
 def _wrap(

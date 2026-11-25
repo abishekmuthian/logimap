@@ -27,9 +27,10 @@ def _has_cairosvg() -> bool:
 
 
 HAS_RSVG = shutil.which("rsvg-convert") is not None
+HAS_KSVGTOPNG = shutil.which("ksvgtopng") is not None
 HAS_CAIROSVG = _has_cairosvg()
 needs_svg = pytest.mark.skipif(
-    not (HAS_RSVG or HAS_CAIROSVG), reason="no SVG rasterizer installed"
+    not (HAS_RSVG or HAS_KSVGTOPNG or HAS_CAIROSVG), reason="no SVG rasterizer installed"
 )
 
 
@@ -94,6 +95,32 @@ def test_svg_falls_back_to_cairosvg(tmp_path, monkeypatch) -> None:
     img = icons.load(str(svg), 64)
     assert img is not None
     assert _center(img)[0] > 200
+
+
+@pytest.mark.skipif(not HAS_KSVGTOPNG, reason="ksvgtopng not installed")
+@pytest.mark.parametrize("svg_text, size", [(RED_CIRCLE_SVG, (64, 64)), (WIDE_SVG, (64, 32))])
+def test_svg_falls_back_to_ksvgtopng(tmp_path, monkeypatch, svg_text, size) -> None:
+    real_which = shutil.which
+    monkeypatch.setattr(icons.shutil, "which",
+                        lambda name: real_which(name) if name == "ksvgtopng" else None)
+    svg = tmp_path / "-dash.svg"
+    svg.write_text(svg_text)
+    img = icons._rasterize_svg(svg, 64)
+    assert img is not None and img.size == size
+    assert img.getpixel((img.width // 2, img.height // 2))[3] == 255
+
+
+def test_svg_aspect(tmp_path) -> None:
+    cases = {
+        WIDE_SVG: 2.0,
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10px" height="40px"/>': 0.25,
+        '<svg xmlns="http://www.w3.org/2000/svg"/>': 1.0,
+        "not xml": 1.0,
+    }
+    for i, (text, want) in enumerate(cases.items()):
+        p = tmp_path / f"{i}.svg"
+        p.write_text(text)
+        assert icons._svg_aspect(p) == want
 
 
 def test_svg_without_rasterizer_returns_none(tmp_path, monkeypatch) -> None:
